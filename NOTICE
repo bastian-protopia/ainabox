@@ -1,0 +1,48 @@
+# NOTICE
+**AINABOX — Local Portable Sovereign AI**
+
+---
+
+## English
+
+### Trademark Notice
+**AINABOX™** is a trademark pending registration with the European Union Intellectual Property Office (EUIPO) by Michele Canova. 
+The use of the AINABOX name and logo is subject to the rights of the trademark owner. The GPL license granted for the source code does not grant any rights to use the trademark.
+
+### Copyright
+© 2026 Michele Canova <bastian@ainabox.it>
+All rights reserved.
+
+### Third-Party Components
+AINABOX is an orchestration of several open-source projects. We acknowledge and respect the licenses of the following components:
+- **Open WebUI** — Apache License 2.0
+- **ComfyUI** — GNU General Public License v3.0
+- **ComfyUI-Manager** — GNU General Public License v3.0
+- **Ollama** — MIT License
+- **Speaches** — MIT License
+- **Hermes Agent** — MIT License
+- **Piper TTS** — MIT License
+- **faster-whisper** — MIT License
+
+---
+
+## Italiano
+
+### Avviso sul Marchio
+**AINABOX™** è un marchio in fase di registrazione presso l'Ufficio dell'Unione Europea per la Proprietà Intellettuale (EUIPO) a nome di Michele Canova.
+L'uso del nome e del logo AINABOX è soggetto ai diritti del titolare del marchio. La licenza GPL concessa per il codice sorgente non conferisce alcun diritto di utilizzo del marchio.
+
+### Copyright
+© 2026 Michele Canova <bastian@ainabox.it>
+Tutti i diritti riservati.
+
+### Componenti di Terze Parti
+AINABOX è un'orchestrazione di diversi progetti open-source. Riconosciamo e rispettiamo le licenze dei seguenti componenti:
+- **Open WebUI** — Apache License 2.0
+- **ComfyUI** — GNU General Public License v3.0
+- **ComfyUI-Manager** — GNU General Public License v3.0
+- **Ollama** — MIT License
+- **Speaches** — MIT License
+- **Hermes Agent** — MIT License
+- **Piper TTS** — MIT License
+- **faster-whisper** — MIT License

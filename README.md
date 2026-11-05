@@ -1,6 +1,5 @@
 # AINABOX
-**Local Portable Sovereign AI. Chat · Art · Agents.**
-> *One box, one install instead of a hundred.*
+Local AI suite: Chat, Art, Voice, Agent, on your hardware. Double-click install. Effortless. GPL3. Portable. Sovereign. No cloud. No subscription.
 
 ---
 

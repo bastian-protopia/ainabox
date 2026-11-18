@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # AINABOX — Installatore
-# Copyright (C) 2026 Michele Canova <bastian@ainabox.it>
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
 # Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
 set -uo pipefail
 
 CURRENT_USER="$(whoami)"
@@ -26,15 +27,18 @@ rileva_gpu() {
   fi
 }
 rileva_ram() { free -g | awk '/^Mem:/{print $2" GB"}'; }
-spazio_libero() { df --output=avail -BG "${1:-/}" 2>/dev/null | tail -1 | tr -dc '0-9'; }
 rileva_dischi() {
-  lsblk --bytes -o NAME,SIZE,MODEL,TYPE,MOUNTPOINT 2>/dev/null | awk '
-    NR>1 {
-      if ($4!="disk" && $4!="part") next
-      if ($5=="/" || $5=="/home" || $5=="/boot" || $5=="/boot/efi") next
-      gb=int($2/1073741824); if (gb==0) next
-      printf "%s\t%d GB\t%s\n", $1, gb, $3
-    }'
+  lsblk --bytes -P -d -n -o NAME,SIZE,MODEL,TYPE 2>/dev/null | while IFS= read -r line; do
+    local name size model type
+    name=$(echo "$line" | sed -n 's/.*NAME="\([^"]*\)".*/\1/p')
+    size=$(echo "$line" | sed -n 's/.*SIZE="\([^"]*\)".*/\1/p')
+    model=$(echo "$line" | sed -n 's/.*MODEL="\([^"]*\)".*/\1/p')
+    type=$(echo "$line" | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+    [ "$type" != "disk" ] && continue
+    local gb=$((size / 1073741824))
+    [ "$gb" -le 0 ] && continue
+    printf "%s (%s, %d GB)\n" "$name" "$model" "$gb"
+  done
 }
 
 # ── PHASE 0: PREAMBOLO ──
@@ -56,11 +60,11 @@ pkg_install() {
     esac
 }
 
-if ! command -v zenity &>/dev/null; then
-    echo "zenity non trovato. Installazione…"
-    pkg_install zenity
+# ── FASE 0: PREFLIGHT (bash-pure, idempotente) ──
+_INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$_INSTALL_DIR/preflight.sh" ]; then
+    bash "$_INSTALL_DIR/preflight.sh" || exit $?
 fi
-command -v zenity &>/dev/null || { echo "ERRORE: zenity non installabile."; exit 1; }
 
 # --- GPU: rileva + opt-in toolkit (FIX MORSO 2: ls, non [ -d glob ]) ---
 if ls /dev/nvidia* 2>/dev/null | grep -q . || command -v nvidia-smi &>/dev/null; then
@@ -81,46 +85,53 @@ GPU="$(rileva_gpu)"
 RAM="$(rileva_ram)"
 
 # ═══ FINESTRA 1: scelta modalità (FIX R2: --list --radiolist, zero RC 10) ═══
-SELEZIONE=$(zenity --list --title="AINABOX — Installazione" \
-  --text="Distro: $DISTRO
-GPU: $GPU
-RAM: $RAM
-
-Scegli dove installare AINABOX:" \
-  --radiolist --hide-header \
-  --column="Modo" --column="Descrizione" --column=" " \
-  "cartella" "Installa in /opt/ainabox/ (non cifrata)" "" \
-  "luks" "Disco esterno (cifrato LUKS)" "" 2>/dev/null)
+# ═══ FINESTRA 2: DOVE ═══
+SELEZIONE=$(zenity --list --title="AINABOX — Dove" \
+  --text="Vuoi installare AINABOX nel computer,\noppure su un disco esterno con cifratura dei dati?" \
+  --column="Dove" \
+  "COMPUTER" \
+  "SSD ESTERNO" 2>/dev/null)
 RC=$?
 if [ $RC -ne 0 ]; then exit 0; fi
-if [ "$SELEZIONE" = "luks" ]; then MODE="luks"; fi
-
-# ── FINESTRA 2: PASSPHRASE ──
+case "$SELEZIONE" in
+  *SSD*|*esterno*|*ESTERNO*) MODE="luks" ;;
+  *) MODE="cartella" ;;
+esac
 if [ "$MODE" = "cartella" ]; then
-    PASS1="$(zenity --entry --title="Passphrase" --hide-text --text="Scegli una passphrase per il pannello AINABOX.\n(La usa per accedere. Scrivila su carta.)" --ok-label="OK" 2>/dev/null)"
-    [ -z "$PASS1" ] && exit 0
-    PASS2="$(zenity --entry --title="Conferma" --hide-text --text="Ripeti la passphrase:" --ok-label="OK" 2>/dev/null)"
-    [ -z "$PASS2" ] && exit 0
-    [ "$PASS1" != "$PASS2" ] && { zenity --error --title="AINABOX" --text="Le passphrase non coincidono."; exit 1; }
-fi
-
-# ── PHASE 1: PERCORSO ──
-if [ "$MODE" = "cartella" ]; then
-    DEST="/opt/ainabox"
-    AVAIL="$(spazio_libero "/")"
-    if [ "${AVAIL:-0}" -lt 45 ]; then
-        zenity --error --title="Spazio insufficiente" --text="Serve almeno 45 GB liberi. Ne hai ${AVAIL:-0}."
-        exit 1
+    PROT_RC=1
+    zenity --question --title="AINABOX — Pannello" \
+      --text="Installo in /opt/ainabox.\n\nVuoi una password per accedere al pannello?\n(Se NO, l'accesso è aperto in rete locale.)" \
+      --ok-label="SÌ, PROTEGGI" --cancel-label="NO, VAI" 2>/dev/null || PROT_RC=$?
+    if [ $PROT_RC -eq 0 ]; then
+        PASS1="$(zenity --entry --title="Password" --hide-text --text="Digita una password. Scrivila su carta." --ok-label="OK" 2>/dev/null)"
+        [ -z "$PASS1" ] && PASS1=""
+        PASS2="$(zenity --entry --title="Conferma" --hide-text --text="Ripeti la password:" --ok-label="OK" 2>/dev/null)"
+        [ -z "$PASS2" ] && PASS2=""
+        [ "$PASS1" != "$PASS2" ] && { zenity --error --title="AINABOX" --text="Le password non coincidono."; exit 1; }
+    else
+        PASS1=""
     fi
-    [ "${AVAIL:-0}" -lt 500 ] && echo "Consigliati 500 GB per crescita futura."
+    DEST="/opt/ainabox"
+    AVAIL="$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')"; AVAIL="${AVAIL:-0}"
+    [ "$AVAIL" -lt 45 ] && { zenity --error --title="AINABOX — Spazio" --text="AINABOX ha bisogno di almeno 45 GB liberi.\nNe hai ${AVAIL} GB.\n\nLibera spazio e riprova."; exit 1; }
 else
-    DISCO_NAME="$(rileva_dischi | zenity --list --title="Disco" --text="Scegli un disco (VERRA' FORMATTATO — dati persi):" --column="Disco" --column="Dim" --column="Modello" --hide-header 2>/dev/null)"
+    DISCO_NAME="$(rileva_dischi | zenity --list --title="Disco" --text="Scegli un disco:" --column="Disco" --hide-header 2>/dev/null)"
     [ -z "$DISCO_NAME" ] && exit 0
+    DISCO_NAME="${DISCO_NAME%% (*}"
     DISCO="/dev/$DISCO_NAME"
-    AVAIL="$(spazio_libero "$DISCO" 2>/dev/null || echo 0)"
+    DISCO_LABEL="$(lsblk -dno MODEL "/dev/$DISCO_NAME" 2>/dev/null | xargs || echo 'disco')"
+    CONF_RC=1
+    zenity --question --title="⚠️ FORMATTAZIONE" \
+      --text="STAI PER FORMATTARE:\n/dev/$DISCO_NAME ($DISCO_LABEL)\n\nTutti i dati su questo disco saranno persi.\nQuesta operazione è IRREVERSIBILE." \
+      --ok-label="SÌ, FORMATTA" --cancel-label="ANNULLA" 2>/dev/null ; CONF_RC=$?
+    if [ $CONF_RC -ne 0 ]; then
+        zenity --info --title="AINABOX" --text="Annullato. Nessun disco è stato toccato." 2>/dev/null || true
+        exit 0
+    fi
+    DEST="/mnt/Data"
+    AVAIL="$(lsblk --bytes -o SIZE -dn "/dev/$DISCO_NAME" 2>/dev/null | awk '{print int($1/1073741824)}')"; [ -z "$AVAIL" ] && AVAIL=0
     [ "${AVAIL:-0}" -lt 45 ] && { zenity --error --title="AINABOX" --text="Disco troppo piccolo (<45 GB)."; exit 1; }
-    # FINESTRA 2 (LUKS)
-    PASS1="$(zenity --entry --title="Passphrase LUKS" --hide-text --text="Digita una passphrase per proteggere i tuoi dati:\n\n⚠️ Questa passphrase è l'UNICA chiave.\nSe la perdi, i dati sono persi.\nScrivila su carta." --ok-label="OK" 2>/dev/null)"
+    PASS1="$(zenity --entry --title="Password" --hide-text --text="Scegli una passphrase per proteggere il disco\ne l'accesso al pannello.\n\n⚠️ Questa è l'UNICA chiave.\nSe la perdi, i dati sono persi.\nScrivila su carta." --ok-label="OK" 2>/dev/null)"
     [ -z "$PASS1" ] && exit 0
     PASS2="$(zenity --entry --title="Conferma" --hide-text --text="Ripeti la passphrase:" --ok-label="OK" 2>/dev/null)"
     [ -z "$PASS2" ] && exit 0
@@ -128,17 +139,32 @@ else
     DISCO_UUID="$(blkid -s UUID -o value "$DISCO" 2>/dev/null)"
 fi
 
+# ═══ FINESTRA 3: MODELLI ═══
+MODELLI="no"
+zenity --question --title="AINABOX — Modelli AI" \
+  --text="Vuoi scaricare i modelli AI? (~15.5 GB)\nCHAT (Qwen) · GRAFICA (SD1.5) · VOCALE (Paola)\n\nSe NO, li scarichi quando vuoi dal pannello." \
+  --ok-label="SÌ, TUTTI" --cancel-label="NO, DOPO" 2>/dev/null && MODELLI="si" || true
+
+# ═══ IL FILM (1 finestra, testo cambia, 0 bottoni, X=annulla) [5 §1] ═══
+FILM_PID=""
+film() {
+    [ -n "$FILM_PID" ] && kill "$FILM_PID" 2>/dev/null && wait "$FILM_PID" 2>/dev/null
+    zenity --progress --title="AINABOX" --text="$1" --pulsate &
+    FILM_PID=$!
+}
+film_end() {
+    [ -n "$FILM_PID" ] && kill "$FILM_PID" 2>/dev/null && wait "$FILM_PID" 2>/dev/null
+    FILM_PID=""
+}
+film "Scaricando AINABOX…"
 # ── PHASE 2: TARBALL ──
 TARBALL="$SCRIPT_DIR/ainabox-pkg.tar.gz"
 if [ ! -f "$TARBALL" ]; then
     TARBALL="/tmp/ainabox-pkg.tar.gz"
-    zenity --info --title="AINABOX" --text="Scaricando AINABOX..." &
-    Z_PID=$!
     curl -fL --progress-bar -o "$TARBALL" "https://github.com/bastian-protopia/ainabox/releases/latest/download/ainabox-pkg.tar.gz" 2>/dev/null \
-        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/download/ainabox-pkg.tar.gz" 2>/dev/null \
+        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/ainabox-pkg.tar.gz" 2>/dev/null \
         || { zenity --error --title="AINABOX" --text="Download tarball fallito.\nVerifica la connessione e riprova."; exit 1; }
 fi
-    kill ${Z_PID:-} 2>/dev/null || true
 SHA_FILE="${TARBALL}.sha256"
 if [ -f "$SHA_FILE" ]; then
     echo "$(awk '{print $1}' "$SHA_FILE")  $(basename "$TARBALL")" | sha256sum --check - 2>/dev/null \
@@ -152,32 +178,40 @@ cat > /tmp/ainabox-root.sh << 'ROOTSCRIPT'
 #!/bin/bash
 set -euo pipefail
 DEST="$1"; MODE="$2"; CUR="$3"; DISCO="${4:-}"; PASS1="${5:-}"; DISCO_UUID="${6:-}"; TARBALL="${7:?}"
+if [ "$MODE" = "luks" ]; then
+    printf '%s' "$PASS1" | cryptsetup luksFormat --type luks2 --hash sha256 --iter-time 2000 --batch-mode "$DISCO"
+    printf '%s' "$PASS1" | cryptsetup luksOpen "$DISCO" ainabox --key-file=/dev/stdin
+    mkfs.ext4 -F /dev/mapper/ainabox
+    mkdir -p /etc/luks-keys
+    dd if=/dev/urandom of=/etc/luks-keys/ainabox.key bs=512 count=1
+    chmod 600 /etc/luks-keys/ainabox.key
+    printf '%s' "$PASS1" | cryptsetup luksAddKey --batch-mode "$DISCO" /etc/luks-keys/ainabox.key
+    mkdir -p /mnt/Data
+    mount /dev/mapper/ainabox /mnt/Data
+fi
 mkdir -p "$DEST"
 tar xzf "$TARBALL" -C "$DEST"
 [ -d "$DEST/engine_zone" ] || { echo "ESTRAZIONE_INCOMPLETA"; exit 1; }
 if [ "$MODE" = "cartella" ]; then
-    mountpoint -q /mnt/Data 2>/dev/null && { umount /mnt/Data 2>/dev/null || umount -l /mnt/Data 2>/dev/null || true; }
-    if [ -L /mnt/Data ]; then rm /mnt/Data; elif [ -d /mnt/Data ]; then rmdir /mnt/Data 2>/dev/null || true; fi
-    ln -sfn "$DEST" /mnt/Data
-else
-    echo "$PASS1" | cryptsetup luksFormat --type luks2 --hash sha256 --iter-time 2000 --batch-mode "$DISCO"
-    echo "$PASS1" | cryptsetup luksOpen "$DISCO" ainabox --key-file=/dev/stdin
-    mkfs.ext4 -F /dev/mapper/ainabox
-    mkdir -p /mnt/Data
-    mount /dev/mapper/ainabox /mnt/Data
-    mkdir -p /etc/luks-keys
-    dd if=/dev/urandom of=/etc/luks-keys/ainabox.key bs=512 count=1
-    chmod 600 /etc/luks-keys/ainabox.key
-    echo "$PASS1" | cryptsetup luksAddKey "$DISCO" --key-file /etc/luks-keys/ainabox.key
+    if [ ! -e /mnt/Data ] || [ -L /mnt/Data ]; then
+        rm -f /mnt/Data 2>/dev/null || true
+        ln -sfn "$DEST" /mnt/Data
+    fi
 fi
 mkdir -p /etc/ainabox
 echo "$MODE" > /etc/ainabox/mode
+echo "$DEST" > /etc/ainabox/dest
+chmod 644 /etc/ainabox/dest
 if [ "$MODE" = "luks" ]; then
-    printf "UUID=%s\nMAPPER=ainabox\nKEYFILE=/etc/luks-keys/ainabox.key\n" "${DISCO_UUID:-unknown}" > /etc/ainabox/luks
+    printf "UUID=%s\nMAPPER=ainabox\nKEYFILE=/etc/luks-keys/ainabox.key\n" "${DISCO_UUID:-$(blkid -s UUID -o value "$DISCO" 2>/dev/null)}" > /etc/ainabox/luks
 fi
 cat > /etc/sudoers.d/ainabox << SUDO
 ${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/apri_ainabox
 ${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/disconnetti_ainabox
+${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/avvia_servizio.sh *
+${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/ainabox_fase37 *
+${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/ainabox_hermes_link *
+${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/ainabox_placement *
 SUDO
 chmod 440 /etc/sudoers.d/ainabox
 visudo -cf /etc/sudoers.d/ainabox
@@ -185,21 +219,105 @@ ln -sfn "$DEST/engine_zone/apri_ainabox" /usr/local/bin/apri_ainabox
 ln -sfn "$DEST/engine_zone/disconnetti_ainabox" /usr/local/bin/disconnetti_ainabox
 ln -sfn "$DEST/installer/ainabox-uninstall.sh" /usr/local/bin/ainabox-uninstall
 ln -sfn "$DEST/engine_zone/bin/avvia_servizio.sh" /usr/local/bin/avvia_servizio.sh
+ln -sfn "$DEST/installer/ainabox_fase37.sh" /usr/local/bin/ainabox_fase37
+cat > /usr/local/bin/ainabox_hermes_link << 'HL'
+#!/bin/bash
+DEST="${1:-/opt/ainabox}"
+if id svc_hermes &>/dev/null; then
+    mkdir -p /home/svc_hermes/.hermes
+    ln -sf "$DEST/hermes_zone/config.yaml" /home/svc_hermes/.hermes/config.yaml
+    chown svc_hermes:ai_services /home/svc_hermes/.hermes/config.yaml
+fi
+HL
+chmod 755 /usr/local/bin/ainabox_hermes_link
+cat > /usr/local/bin/ainabox_placement << 'PL'
+#!/bin/bash
+SD_FILE="$1"; SD_OK="$2"
+PAOLA_DIR="$3"; PAOLA_HASH="$4"; PAOLA_OK="$5"
+[ "$SD_OK" = "1" ] && { mkdir -p "$(dirname "$SD_FILE")" && cp /tmp/SD1.5.safetensors "$SD_FILE" && echo "SD1.5: ✅"; }
+[ "$PAOLA_OK" = "1" ] && {
+    mkdir -p "$PAOLA_DIR/blobs" "$PAOLA_DIR/snapshots/$PAOLA_HASH" "$PAOLA_DIR/refs"
+    for _f in model.onnx config.json README.md .gitattributes; do
+        _b=$(sha256sum "/tmp/paola_$_f" | awk '{print $1}')
+        cp "/tmp/paola_$_f" "$PAOLA_DIR/blobs/$_b"
+        ln -sf "../../blobs/$_b" "$PAOLA_DIR/snapshots/$PAOLA_HASH/$_f"
+    done
+    printf '%s' "$PAOLA_HASH" > "$PAOLA_DIR/refs/main"
+    echo "Paola: ✅"
+}
+PL
+chmod 755 /usr/local/bin/ainabox_placement
 if [ -n "$PASS1" ]; then
     TOKEN=$(echo -n "$PASS1" | openssl dgst -sha256 -hmac "ainabox_vetrina_v1" | awk '{print $NF}')
     mkdir -p "$DEST/updater_zone/.secrets"
     echo -n "$TOKEN" > "$DEST/updater_zone/.secrets/VETRINA_TOKEN"
     chmod 600 "$DEST/updater_zone/.secrets/VETRINA_TOKEN"
+# FASE 3.7b: HERMES (app + config) — sandbox/chown delegati a apri_ainabox (root)
+# ═══════════════════════════════════════════════
+echo ""
+echo "── FASE 3.7b: Hermes ──"
+film "Configurando Hermes…" 2>/dev/null || true
+_HLOG="/tmp/ainabox-hermes-install.log"
+FAILURES="${FAILURES:-0}"
+# ── 1. Download app Python (~400 MB) ──
+echo "  Scarico Hermes app (~400 MB)…"
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes_install.sh >> "$_HLOG" 2>&1
+RC_CURL=$?
+if [ $RC_CURL -ne 0 ]; then
+    echo "  [ERRORE] curl install.sh fallito (exit $RC_CURL)."
+    FAILURES=$((FAILURES + 1))
+else
+    # stdin chiuso: install.sh non aspetta input umano. App si scarica comunque.
+    HERMES_HOME="$DEST/hermes_zone/.hermes" HOME="$DEST/hermes_zone" bash /tmp/hermes_install.sh < /dev/null >> "$_HLOG" 2>&1
+    RC_HERMES=$?
+    rm -f /tmp/hermes_install.sh
+    if [ $RC_HERMES -ne 0 ]; then
+        echo "  [ERRORE] install.sh fallito (exit $RC_HERMES)."
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "  [ok] Hermes app installata."
+    fi
+fi
+# ── 2. Config yaml (6 valori, 7 righe) ──
+mkdir -p "$DEST/hermes_zone/.hermes"
+cat > "$DEST/hermes_zone/.hermes/config.yaml" << 'YAML'
+model:
+  default: hermes3-8b-64k
+  provider: custom
+  base_url: http://127.0.0.1:11434/v1
+  context_length: 65536
+terminal:
+  backend: docker
+streaming: false
+YAML
+echo "  [ok] Config yaml (6 valori)."
+# ── 3. Sandbox + chown: delegati a apri_ainabox (FASE 4.2 root + FASE 2 root) ──
+echo "  [ok] Sandbox + chown: delegati a apri_ainabox (root)."
+# ── 4. Verifica ──
+echo "  Verifica:"
+echo "    yaml: $(grep -c 'hermes3-8b-64k\|provider: custom\|127.0.0.1:11434\|backend: docker\|streaming: false' "$DEST/hermes_zone/.hermes/config.yaml" 2>/dev/null) / 5 valori"
+echo "    hermes bin: $(ls "$DEST/hermes_zone/.hermes/hermes-agent/.hermes/bin/hermes" 2>/dev/null && echo presente || echo assente)"
+film_end 2>/dev/null || true
+echo "  ✅ Hermes app + yaml pronti."
 fi
 chown -R "$CUR" "$DEST"
+# --- VENV GUARD (universale: Python 3.10, 3.11, 3.12, 3.13) ---
+VENV="$DEST/vetrina_zone/venv"
+if ! $VENV/bin/python3 -c "import fastapi, uvicorn, requests" 2>/dev/null; then
+  echo "[Install] Venv non compatibile con Python locale. Ricreo..."
+  rm -rf "$VENV"
+  /usr/bin/python3 -m venv "$VENV"
+  $VENV/bin/pip install --quiet -r "$DEST/vetrina_zone/requirements.txt"
+  chown -R "$CUR" "$VENV"
+  echo "[Install] Venv riparato."
+fi
+echo "$CUR" > "$DEST/vetrina_zone/.current_user"
 ROOTSCRIPT
 chmod +x /tmp/ainabox-root.sh
-zenity --info --title="AINABOX" --text="Configurazione..." &
-Z_PID=$!
+film "Configurando…" 2>/dev/null || true
 pkexec bash -x /tmp/ainabox-root.sh 2>/tmp/ainabox-root.log "$DEST" "$MODE" "$CURRENT_USER" "${DISCO:-}" "${PASS1:-}" "${DISCO_UUID:-}" "$TARBALL" \
     || { zenity --error --title="AINABOX" --text="Configurazione fallita.\nControlla i permessi e riprova."; exit 1; }
 rm -f /tmp/ainabox-root.sh
-kill ${Z_PID:-} 2>/dev/null || true
 
 # --- ICONE (anylinux: rileva la cartella desktop vera) ---
 if [ -f "$HOME/.config/user-dirs.dirs" ]; then
@@ -212,6 +330,7 @@ mkdir -p "$DESK"
 cp "$DEST/ainabox-apri.desktop" "$DESK/" 2>/dev/null
 cp "$DEST/ainabox-disconnetti.desktop" "$DESK/" 2>/dev/null
 chmod +x "$DESK"/ainabox-*.desktop 2>/dev/null
+install -m 755 "$DEST/engine_zone/bin/apri_ainabox_icon" /usr/local/bin/apri_ainabox_icon 2>/dev/null || true
 # Icon= nei .desktop desktop
 for f in "$DESK"/ainabox-*.desktop; do
   [ -f "$f" ] && grep -q '^Icon=' "$f" || echo "Icon=ainabox" >> "$f"
@@ -240,48 +359,45 @@ if [ -f "$OBSIDIAN" ]; then
     xdg-mime default obsidian.desktop x-scheme-handler/obsidian 2>/dev/null || true
     chown "$CURRENT_USER":"$CURRENT_USER" "$HOME/.config/obsidian" 2>/dev/null || true
 fi
+film "Accensione…" 2>/dev/null || true
 
 # ═══ PHASE 3.5: ACCENSIONE (obbligatoria) ═══
-zenity --info --title="AINABOX" --text="Avvio servizi..." &
-Z_PID=$!
-pkexec bash "$DEST/engine_zone/apri_ainabox" 2>/dev/null \
+sudo bash /usr/local/bin/apri_ainabox 2>/dev/null \
     || { zenity --error --title="AINABOX" --text="Accensione fallita."; exit 1; }
 sleep 5
 
-kill ${Z_PID:-} 2>/dev/null || true
-echo "$USER" > /mnt/Data/vetrina_zone/.current_user 2>/dev/null || true
-# ═══ PHASE 4: MODELLI (opt-in, ~15.5 GB) ═══
-RC3=$(zenity --question --title="AINABOX — Modelli" \
-  --text="Scaricare i modelli AI? (~15.5 GB)
+echo "$CURRENT_USER" > "$DEST/vetrina_zone/.current_user" 2>/dev/null || true
+# ── FASE 3.6: CHECK sandbox (caricata da apri_ainabox FASE 4.2) ──
+if [ -f $DEST/.sandbox_loaded ]; then
+    echo "  [ok] Immagine sandbox caricata."
+else
+    echo "  [!] Immagine sandbox non caricata."
+    zenity --error --title="AINABOX" --text="Immagine sandbox non caricata." 2>/dev/null
+fi
+film "Scaricando servizi… (Ollama, WebUI, ComfyUI, Voce)" 2>/dev/null || true
+# ── FASE 3.7: SCARICANDO SERVIZI (1 pkexec root, 0 drop, 0 band-aid) ──
+echo ""
+echo "══ FASE 3.7: Scaricando servizi ══"
+sudo bash /usr/local/bin/ainabox_fase37 "$DEST"
+_F37_RC=$?
+if [ $_F37_RC -ne 0 ]; then
+    zenity --error --title="AINABOX" --text="⚠️ FASE 3.7: download falliti.
+Log: /tmp/ainabox-install.log
+Rilancia l'installer per riprovare.
+I download già completati verranno saltati." 2>/dev/null || true
+    exit 1
+fi
+echo ""
+echo "  ✅ Servizi pronti."
 
- • AGENTE  (4.6 GB)
- • CHAT    (6.8 GB)
- • GRAFICA (4.0 GB)
- • VOCE IT (61 MB)" \
-  --ok-label="INSTALLA + SCARICA" --cancel-label="INSTALLA SENZA" 2>/dev/null)
-RC3=$?
-
-if [ $RC3 -eq 0 ]; then
-    zenity --question --title="AINABOX" \
-      --text="Scarico ~15.5 GB di modelli.
-La connessione deve restare attiva.
-
-Modelli:
- • AGENTE (4.6 GB)
- • CHAT (6.8 GB)
- • GRAFICA (4.0 GB)
- • VOCE IT (61 MB)" \
-      --ok-label="INIZIA" --cancel-label="ANNULLA" 2>/dev/null
-    RC_START=$?
-    if [ $RC_START -ne 0 ]; then
-        zenity --info --title="AINABOX" --text="Download annullato.
-I modelli si possono scaricare dopo dal cockpit." 2>/dev/null
-    else
+# ═══════════════════════════════════════════════
+echo "  ✅ Hermes pronto."
+# ═══ PHASE 4: MODELLI (se FINESTRA 3 = SÌ) ═══
+if [ "$MODELLI" = "si" ]; then
+    film "Scaricando modelli… (Qwen, SD1.5, Paola)" 2>/dev/null || true
 
         # FIX: accendi Ollama+OWU (bootstrap crea infra, non li avvia)
-zenity --info --title="AINABOX" --text="Scaricamento modelli..." &
-Z_PID=$!
-        pkexec bash /usr/local/bin/avvia_servizio.sh testuale 2>/dev/null || true
+        sudo bash /usr/local/bin/avvia_servizio.sh testuale 2>/dev/null || true
         sleep 12
 
         # Polling oracolo (C16: "✅" ≠ UP)
@@ -293,7 +409,7 @@ Z_PID=$!
         [ "$OLLAMA_UP" -eq 0 ] && { zenity --error --title="AINABOX" --text="Ollama non si è avviato."; exit 1; }
 
         # ═══ MODELLI (log + polling + permessi) ═══
-        LOG="/mnt/Data/vetrina_zone/ainabox.log"
+        LOG="$DEST/vetrina_zone/ainabox.log"
         _mlog() { echo "[$(date +%H:%M:%S)] [Modelli] $1" >> "$LOG" 2>/dev/null || true; }
 
         # 1/4: hermes3 (AGENTE) — polling oracolo
@@ -323,7 +439,7 @@ Z_PID=$!
         fi
         # Symlink config Hermes → single source of truth
         if id svc_hermes &>/dev/null; then
-            pkexec bash -c 'mkdir -p /home/svc_hermes/.hermes; ln -sf /mnt/Data/hermes_zone/config.yaml /home/svc_hermes/.hermes/config.yaml; chown svc_hermes:ai_services /home/svc_hermes/.hermes/config.yaml' 2>/dev/null
+            sudo bash /usr/local/bin/ainabox_hermes_link "$DEST" 2>/dev/null
             _mlog "hermes config symlink: ✅"
         fi
         # 2/4: qwen25vl (CHAT) — polling oracolo (6.8 GB, max 15 min)
@@ -366,7 +482,7 @@ Z_PID=$!
         if [ ! -f "$PAOLA_DIR/refs/main" ]; then
             _mlog "Paola: download (61 MB)"
             PAOLA_DL_OK=1
-            for _f in model.onnx model.onnx.json config.json; do
+            for _f in model.onnx config.json README.md .gitattributes; do
                 curl -sL --retry 2 -o "/tmp/paola_$_f" \
                   "https://huggingface.co/speaches-ai/piper-it_IT-paola-medium/resolve/main/$_f" 2>/dev/null || PAOLA_DL_OK=0
             done
@@ -386,25 +502,22 @@ SD_FILE="$1"; SD_OK="$2"
 PAOLA_DIR="$3"; PAOLA_HASH="$4"; PAOLA_OK="$5"
 [ "$SD_OK" = "1" ] && { mkdir -p "$(dirname "$SD_FILE")" && cp /tmp/SD1.5.safetensors "$SD_FILE" && echo "SD1.5: ✅"; }
 [ "$PAOLA_OK" = "1" ] && {
-    mkdir -p "$PAOLA_DIR/snapshots/$PAOLA_HASH"
-    cp /tmp/paola_model.onnx "$PAOLA_DIR/snapshots/$PAOLA_HASH/model.onnx"
-    cp /tmp/paola_model.onnx.json "$PAOLA_DIR/snapshots/$PAOLA_HASH/model.onnx.json"
-    cp /tmp/paola_config.json "$PAOLA_DIR/snapshots/$PAOLA_HASH/config.json"
-    mkdir -p "$PAOLA_DIR/refs"
+    mkdir -p "$PAOLA_DIR/blobs" "$PAOLA_DIR/snapshots/$PAOLA_HASH" "$PAOLA_DIR/refs"
+    for _f in model.onnx config.json README.md .gitattributes; do
+        _b=$(sha256sum "/tmp/paola_$_f" | awk '{print $1}')
+        cp "/tmp/paola_$_f" "$PAOLA_DIR/blobs/$_b"
+        ln -sf "../../blobs/$_b" "$PAOLA_DIR/snapshots/$PAOLA_HASH/$_f"
+    done
     printf '%s' "$PAOLA_HASH" > "$PAOLA_DIR/refs/main"
-    ln -sf "snapshots/$PAOLA_HASH/model.onnx" "$PAOLA_DIR/model.onnx"
     echo "Paola: ✅"
 }
 PLC
             chmod 700 "$_PL"
-            pkexec bash "$_PL" "$SD_FILE" "$SD_OK" "$PAOLA_DIR" "$PAOLA_HASH" "$PAOLA_OK" 2>/dev/null
+            sudo bash /usr/local/bin/ainabox_placement "$SD_FILE" "$SD_OK" "$PAOLA_DIR" "$PAOLA_HASH" "$PAOLA_OK" 2>/dev/null
             _mlog "Placement: $( [ $? -eq 0 ] && echo "✅ OK" || echo "❌ FALLITO" )"
-            rm -f "$_PL" /tmp/SD1.5.safetensors /tmp/paola_model.onnx /tmp/paola_model.onnx.json /tmp/paola_config.json 2>/dev/null
+            rm -f "$_PL" /tmp/SD1.5.safetensors /tmp/paola_* 2>/dev/null
         fi
 
-kill ${Z_PID:-} 2>/dev/null || true
-        zenity --info --title="Fatto" --text="Modelli scaricati.\nAINABOX è pronta." 2>/dev/null
-    fi
 fi
 
 # ═══ PHASE 5: FINESTRA 5 ═══
@@ -412,17 +525,17 @@ MSG="AINABOX INSTALLATA
 Apri: http://127.0.0.1:8765
 Le icone sono sul desktop e nel menu."
 [ "$MODE" = "luks" ] && MSG="$MSG
-
 La passphrase è l'unica chiave.
 Scrivila su carta."
 
+film_end 2>/dev/null || true
 RC5=$(zenity --info --title="Fatto" --text="$MSG" \
   --ok-label="APRI AINABOX" --extra-button="CHIUDI" 2>/dev/null)
 RC5=$?
 
 if [ $RC5 -eq 0 ]; then
     if ! curl -s http://127.0.0.1:8765/ > /dev/null 2>&1; then
-        pkexec bash /usr/local/bin/apri_ainabox &
+        sudo bash /usr/local/bin/apri_ainabox &
         sleep 15
     fi
     xdg-open "http://127.0.0.1:8765" 2>/dev/null || true

@@ -1,5 +1,6 @@
 # AINABOX
-Local AI suite: Chat, Art, Voice, Agent, on your hardware. Double-click install. Effortless. GPL3. Portable. Sovereign. No cloud. No subscription.
+**Local Portable Sovereign AI. Chat · Art · Agents.**
+> *One box, one install instead of a hundred.*
 
 ---
 
@@ -34,10 +35,10 @@ AINABOX is designed to be "Effortless".
 3. **Run** the installer:
    - **Via Terminal:**
      ```bash
-     chmod +x ainabox-install
-     sudo ./ainabox-install
+     chmod +x ainabox-install.sh
+     sudo ./ainabox-install.sh
      ```
-   - **Via GUI:** Simply double-click the `ainabox-install` file.
+   - **Via GUI:** Simply double-click the `ainabox-install.sh` file.
 
 ---
 
@@ -72,10 +73,10 @@ AINABOX è progettato per essere "Effortless".
 3. **Esegui** l'installer:
    - **Via Terminale:**
      ```bash
-     chmod +x ainabox-install
-     sudo ./ainabox-install
+     chmod +x ainabox-install.sh
+     sudo ./ainabox-install.sh
      ```
-   - **Via GUI:** Semplicemente fai doppio clic sul file `ainabox-install`.
+   - **Via GUI:** Semplicemente fai doppio clic sul file `ainabox-install.sh`.
 
 ---
 

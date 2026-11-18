@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "title": "AINABOX — Dipendenze (v0.1a)",
+    "copyright": "2026 Michele Canova bastian@ainabox.it",
+    "license": "GPL-3.0-or-later",
+    "made_by": "Bastian & Aina"
+  },
+  "version": "0.1a",
+  "generated": "2026-11-18",
+  "regola": "Tutti i satelliti sono obbligatori. Senza uno, AINABOX non funziona. NO = annulla l'installazione intera.",
+  "satelliti": [
+    {"id": 1,  "nome": "zenity",         "verifica": "command -v zenity", "se_manca": "AINABOX non si apre", "install": "zenity", "strato": "sistema"},
+    {"id": 2,  "nome": "podman",         "verifica": "command -v podman", "se_manca": "Hermes tool-calling non c'è", "install": "podman", "strato": "sistema"},
+    {"id": 3,  "nome": "ffmpeg",         "verifica": "command -v ffmpeg", "se_manca": "Vocale (TTS/STT) non c'è", "install": "ffmpeg", "strato": "sistema"},
+    {"id": 4,  "nome": "venv_vetrina",   "verifica": "test -f $AIBOX/vetrina_zone/venv/bin/python", "se_manca": "Cockpit non parte", "install": "python3 -m venv + pip install fastapi uvicorn requests", "strato": "tarball"},
+    {"id": 5,  "nome": "slirp4netns",    "verifica": "test -x $AIBOX/engine_zone/runtime/bin/slirp4netns", "se_manca": "Container non partono", "install": "nel tarball (runtime/bin/)", "strato": "tarball"},
+    {"id": 6,  "nome": "cni_plugins",    "verifica": "test -f $AIBOX/engine_zone/runtime/cni/bridge", "se_manca": "Container non partono", "install": "nel tarball (runtime/cni/)", "strato": "tarball"},
+    {"id": 7,  "nome": "ruamel_yaml",    "verifica": "python3 -c 'import ruamel.yaml'", "se_manca": "Hermes non parte", "install": "nel tarball (Hermes Python 3.14)", "strato": "tarball"},
+    {"id": 8,  "nome": "kornia_rs",      "verifica": "python3 -c 'import kornia_rs'", "se_manca": "ComfyUI non parte", "install": "nel tarball (ComfyUI venv)", "strato": "tarball"},
+    {"id": 9,  "nome": "nftables",       "verifica": "command -v nft", "se_manca": "Cintura rete non si applica", "install": "nftables", "strato": "sistema"},
+    {"id": 10, "nome": "python3",        "verifica": "python3 -c 'import sys; sys.exit(0 if sys.version_info>=(3,10) else 1)'", "se_manca": "Cockpit + Hermes non partono", "install": "python3 python3-pip", "strato": "sistema"},
+    {"id": 11, "nome": "package_manager","verifica": "command -v apt-get || command -v dnf || command -v pacman || command -v zypper", "se_manca": "Non si installa nulla", "install": "N/A", "strato": "sistema"}
+  ]
+}

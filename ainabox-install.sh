@@ -162,7 +162,7 @@ TARBALL="$SCRIPT_DIR/ainabox-pkg.tar.gz"
 if [ ! -f "$TARBALL" ]; then
     TARBALL="/tmp/ainabox-pkg.tar.gz"
     curl -fL --progress-bar -o "$TARBALL" "https://github.com/bastian-protopia/ainabox/releases/latest/download/ainabox-pkg.tar.gz" 2>/dev/null \
-        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/ainabox-pkg.tar.gz" 2>/dev/null \
+        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/download/ainabox-pkg.tar.gz" 2>/dev/null \
         || { zenity --error --title="AINABOX" --text="Download tarball fallito.\nVerifica la connessione e riprova."; exit 1; }
 fi
 SHA_FILE="${TARBALL}.sha256"
@@ -529,6 +529,9 @@ La passphrase è l'unica chiave.
 Scrivila su carta."
 
 film_end 2>/dev/null || true
+# FASE 4.9: chiudi servizi (X apre e trova spento)
+sudo bash "$DEST/engine_zone/bin/chiudi_tutto" 2>/dev/null || true
+sleep 2
 RC5=$(zenity --info --title="Fatto" --text="$MSG" \
   --ok-label="APRI AINABOX" --extra-button="CHIUDI" 2>/dev/null)
 RC5=$?

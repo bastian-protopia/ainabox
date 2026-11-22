@@ -60,11 +60,130 @@ pkg_install() {
     esac
 }
 
-# ── FASE 0: PREFLIGHT (bash-pure, idempotente) ──
-_INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$_INSTALL_DIR/preflight.sh" ]; then
-    bash "$_INSTALL_DIR/preflight.sh" || exit $?
+_preflight() {
+
+MIN_SPACE_GB=45
+
+if [ "$(id -u)" -eq 0 ]; then
+    IPREFIX=""        # già root, installa diretto
+else
+    IPREFIX="pkexec"  # polkit dialog (non zenity)
 fi
+
+detect_pm() {
+    if command -v apt-get  &>/dev/null; then echo "apt";    return 0; fi
+    if command -v dnf      &>/dev/null; then echo "dnf";    return 0; fi
+    if command -v pacman   &>/dev/null; then echo "pacman"; return 0; fi
+    if command -v zypper   &>/dev/null; then echo "zypper"; return 0; fi
+    return 1
+}
+
+SPAZIO_GB=$(df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc '0-9')
+SPAZIO_GB="${SPAZIO_GB:-0}"
+
+MISSING=()
+EFFECTS=()
+
+command -v zenity &>/dev/null || { MISSING+=("zenity");    EFFECTS+=("AINABOX non si apre"); }
+command -v podman &>/dev/null || { MISSING+=("podman");    EFFECTS+=("Hermes non esegue comandi"); }
+command -v ffmpeg &>/dev/null || { MISSING+=("ffmpeg");    EFFECTS+=("La voce non funziona"); }
+command -v nft    &>/dev/null || { MISSING+=("nftables");  EFFECTS+=("Cintura rete non si applica"); }
+python3 -c 'import sys; sys.exit(0 if sys.version_info>=(3,10) else 1)' 2>/dev/null \
+    || { MISSING+=("python3");   EFFECTS+=("Cockpit + Hermes non partono"); }
+detect_pm &>/dev/null          || { MISSING+=("package manager"); EFFECTS+=("Non si installa nulla"); }
+
+
+
+# 2) TUTTO PRESENTE → exit 0, ZERO finestre (idempotente)
+if [ "${#MISSING[@]}" -eq 0 ]; then
+    echo "Tutto presente."
+    return 0
+fi
+
+# 3) BOOTSTRAP ZENITY (fuori finestra: polkit, non zenity)
+if ! command -v zenity &>/dev/null; then
+    PM=$(detect_pm || true)
+    if [ -z "$PM" ]; then
+        echo "ERRORE: nessun package manager. Non posso installare zenity." >&2
+        exit 1
+    fi
+    case "$PM" in
+        apt)    $IPREFIX apt-get install -y zenity ;;
+        dnf)    $IPREFIX dnf install -y zenity ;;
+        pacman) $IPREFIX pacman -S --noconfirm zenity ;;
+        zypper) $IPREFIX zypper install -y zenity ;;
+    esac
+    # Rimuovi zenity da MISSING (ora è installato)
+    _m=() _e=()
+    for i in "${!MISSING[@]}"; do
+        if [ "${MISSING[$i]}" != "zenity" ]; then
+            _m+=("${MISSING[$i]}")
+            _e+=("${EFFECTS[$i]}")
+        fi
+    done
+    MISSING=("${_m[@]:-}")
+    EFFECTS=("${_e[@]:-}")
+fi
+
+# 4) ANCORA QUALCOSA MANCA → FINESTRA SÌ/NO
+if [ "${#MISSING[@]}" -gt 0 ]; then
+    TXT="Senza di esse AINABOX NON FUNZIONA:\n\n"
+    for i in "${!MISSING[@]}"; do
+        TXT="${TXT}  • ${MISSING[$i]} → ${EFFECTS[$i]}\n"
+    done
+    TXT="${TXT}\nTutti i satelliti sono obbligatori.\nNO = annulla l'installazione intera."
+
+    RC=1
+    zenity --question \
+        --title="AINABOX — Verifica" \
+        --text="$TXT" \
+        --ok-label="SÌ, INSTALLA" \
+        --cancel-label="ANNULLA" \
+        2>/dev/null
+        RC=$?
+
+    if [ "$RC" -ne 0 ]; then
+        zenity --info --title="AINABOX" \
+            --text="Installazione annullata. AINABOX non è installata." \
+            2>/dev/null || true
+        exit 0
+    fi
+
+    # SÌ → installa i mancanti
+    PM=$(detect_pm || true)
+    if [ -z "$PM" ]; then
+        zenity --error --title="AINABOX" \
+            --text="Errore: nessun package manager." 2>/dev/null || true
+        exit 1
+    fi
+    PKGS=()
+    for m in "${MISSING[@]}"; do
+        case "$m" in
+            podman)          PKGS+=("podman") ;;
+            ffmpeg)          PKGS+=("ffmpeg") ;;
+            nftables)        PKGS+=("nftables") ;;
+            python3)
+                case "$PM" in
+                    pacman) PKGS+=("python" "python-pip") ;;
+                    *)      PKGS+=("python3" "python3-pip") ;;
+                esac ;;
+            "package manager") : ;;
+        esac
+    done
+    if [ "${#PKGS[@]}" -gt 0 ]; then
+        case "$PM" in
+            apt)    $IPREFIX apt-get install -y "${PKGS[@]}" ;;
+            dnf)    $IPREFIX dnf install -y "${PKGS[@]}" ;;
+            pacman) $IPREFIX pacman -S --noconfirm "${PKGS[@]}" ;;
+            zypper) $IPREFIX zypper install -y "${PKGS[@]}" ;;
+        esac
+    fi
+fi
+
+echo "Preflight OK."
+return 0
+}
+_preflight || exit 1
 
 # --- GPU: rileva + opt-in toolkit (FIX MORSO 2: ls, non [ -d glob ]) ---
 if ls /dev/nvidia* 2>/dev/null | grep -q . || command -v nvidia-smi &>/dev/null; then
@@ -101,7 +220,8 @@ if [ "$MODE" = "cartella" ]; then
     PROT_RC=1
     zenity --question --title="AINABOX — Pannello" \
       --text="Installo in /opt/ainabox.\n\nVuoi una password per accedere al pannello?\n(Se NO, l'accesso è aperto in rete locale.)" \
-      --ok-label="SÌ, PROTEGGI" --cancel-label="NO, VAI" 2>/dev/null || PROT_RC=$?
+      --ok-label="SÌ, PROTEGGI" --cancel-label="NO, VAI" 2>/dev/null
+      PROT_RC=$?
     if [ $PROT_RC -eq 0 ]; then
         PASS1="$(zenity --entry --title="Password" --hide-text --text="Digita una password. Scrivila su carta." --ok-label="OK" 2>/dev/null)"
         [ -z "$PASS1" ] && PASS1=""
@@ -128,7 +248,7 @@ else
         zenity --info --title="AINABOX" --text="Annullato. Nessun disco è stato toccato." 2>/dev/null || true
         exit 0
     fi
-    DEST="/mnt/Data"
+    DEST="/mnt/ainabox"
     AVAIL="$(lsblk --bytes -o SIZE -dn "/dev/$DISCO_NAME" 2>/dev/null | awk '{print int($1/1073741824)}')"; [ -z "$AVAIL" ] && AVAIL=0
     [ "${AVAIL:-0}" -lt 45 ] && { zenity --error --title="AINABOX" --text="Disco troppo piccolo (<45 GB)."; exit 1; }
     PASS1="$(zenity --entry --title="Password" --hide-text --text="Scegli una passphrase per proteggere il disco\ne l'accesso al pannello.\n\n⚠️ Questa è l'UNICA chiave.\nSe la perdi, i dati sono persi.\nScrivila su carta." --ok-label="OK" 2>/dev/null)"
@@ -162,7 +282,7 @@ TARBALL="$SCRIPT_DIR/ainabox-pkg.tar.gz"
 if [ ! -f "$TARBALL" ]; then
     TARBALL="/tmp/ainabox-pkg.tar.gz"
     curl -fL --progress-bar -o "$TARBALL" "https://github.com/bastian-protopia/ainabox/releases/latest/download/ainabox-pkg.tar.gz" 2>/dev/null \
-        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/download/ainabox-pkg.tar.gz" 2>/dev/null \
+        || curl -fL --progress-bar -o "$TARBALL" "https://www.ainabox.it/ainabox-pkg.tar.gz" 2>/dev/null \
         || { zenity --error --title="AINABOX" --text="Download tarball fallito.\nVerifica la connessione e riprova."; exit 1; }
 fi
 SHA_FILE="${TARBALL}.sha256"
@@ -186,24 +306,18 @@ if [ "$MODE" = "luks" ]; then
     dd if=/dev/urandom of=/etc/luks-keys/ainabox.key bs=512 count=1
     chmod 600 /etc/luks-keys/ainabox.key
     printf '%s' "$PASS1" | cryptsetup luksAddKey --batch-mode "$DISCO" /etc/luks-keys/ainabox.key
-    mkdir -p /mnt/Data
-    mount /dev/mapper/ainabox /mnt/Data
+    mkdir -p /mnt/ainabox
+    mount /dev/mapper/ainabox /mnt/ainabox
 fi
 mkdir -p "$DEST"
 tar xzf "$TARBALL" -C "$DEST"
 [ -d "$DEST/engine_zone" ] || { echo "ESTRAZIONE_INCOMPLETA"; exit 1; }
-if [ "$MODE" = "cartella" ]; then
-    if [ ! -e /mnt/Data ] || [ -L /mnt/Data ]; then
-        rm -f /mnt/Data 2>/dev/null || true
-        ln -sfn "$DEST" /mnt/Data
-    fi
-fi
 mkdir -p /etc/ainabox
 echo "$MODE" > /etc/ainabox/mode
 echo "$DEST" > /etc/ainabox/dest
 chmod 644 /etc/ainabox/dest
 if [ "$MODE" = "luks" ]; then
-    printf "UUID=%s\nMAPPER=ainabox\nKEYFILE=/etc/luks-keys/ainabox.key\n" "${DISCO_UUID:-$(blkid -s UUID -o value "$DISCO" 2>/dev/null)}" > /etc/ainabox/luks
+    printf "UUID=%s\nMAPPER=ainabox\nKEYFILE=/etc/luks-keys/ainabox.key\n" "$(blkid -s UUID -o value "$DISCO" 2>/dev/null)" > /etc/ainabox/luks
 fi
 cat > /etc/sudoers.d/ainabox << SUDO
 ${CUR} ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/apri_ainabox
@@ -530,7 +644,7 @@ Scrivila su carta."
 
 film_end 2>/dev/null || true
 # FASE 4.9: chiudi servizi (X apre e trova spento)
-sudo bash "$DEST/engine_zone/bin/chiudi_tutto" 2>/dev/null || true
+sg ainabox -c 'sudo bash /usr/local/bin/chiudi_tutto' 2>&1
 sleep 2
 RC5=$(zenity --info --title="Fatto" --text="$MSG" \
   --ok-label="APRI AINABOX" --extra-button="CHIUDI" 2>/dev/null)

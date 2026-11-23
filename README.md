@@ -28,9 +28,18 @@ AINABOX automatically orchestrates and configures the best Open Source tools:
 - **Speaches & Piper:** Speech-to-Text and Text-to-Speech systems for natural interaction.
 - **Hermes Agent:** Autonomous agent capabilities for task automation.
 
+
+### Repository Structure
+| Directory | Contents |
+|-----------|----------|
+| `vetrina_zone/` | Cockpit (FastAPI + JS) — UI, motors, modules |
+| `engine_zone/` | Engine (open/close, 18 CNI, runtime, services) |
+| `network_zone/` | Network config (firewall, peers) |
+| `updater_zone/` | Auto-update scripts |
+
 ### Quick Installation
 AINABOX is designed to be "Effortless".
-1. **Download** the `ainabox-pkg.tar.gz` package.
+1. **Download** the installer: `curl -fsSL https://www.ainabox.it/ainabox-install.sh -o ainabox-install.sh`
 2. **Verify** the checksum integrity.
 3. **Run** the installer:
    - **Via Terminal:**
@@ -66,9 +75,19 @@ AINABOX orchestra e configura automaticamente i migliori strumenti Open Source:
 - **Speaches & Piper:** Sistemi di Speech-to-Text e Text-to-Speech per un'interazione naturale.
 - **Hermes Agent:** Capacità di agenti autonomi per l'automazione di task.
 
+
+### Struttura
+| Directory | Contenuto |
+|-----------|----------|
+| `vetrina_zone/` | Cockpit (FastAPI + JS) — UI, motori, moduli |
+| `engine_zone/` | Motore (apri/chiudi, 18 CNI, runtime, servizi) |
+| `network_zone/` | Config rete (cintura, peers) |
+| `updater_zone/` | Script aggiornamento |
+
+
 ### Installazione Rapida
 AINABOX è progettato per essere "Effortless".
-1. **Scarica** il pacchetto `ainabox-pkg.tar.gz`.
+1. **Scarica** l'installer: `curl -fsSL https://www.ainabox.it/ainabox-install.sh -o ainabox-install.sh`
 2. **Verifica** l'integrità del checksum.
 3. **Esegui** l'installer:
    - **Via Terminale:**
@@ -84,4 +103,7 @@ AINABOX è progettato per essere "Effortless".
 This project is released under the **GPL-3.0-or-later** license. / Questo progetto è rilasciato sotto licenza **GPL-3.0-or-later**.
 See [LICENSE](LICENSE) for details. / Vedi [LICENSE](LICENSE) per i dettagli.
 
+
+For contributions: fork, modify, open a PR.
+Per contribuire: forka, modifica, apri una PR.
 © 2026 Michele Canova <bastian@ainabox.it>

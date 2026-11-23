@@ -18,3 +18,4 @@ vetrina_zone/venv/
 *.bkp-*
 *.ponte
 engine_zone/backups/
+__pycache__/

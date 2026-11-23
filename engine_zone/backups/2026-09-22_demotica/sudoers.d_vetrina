@@ -1,8 +1,0 @@
-# VETRINA — 3 corridoi stretti, nominati, solo per la catena (28/8)
-bastian ALL=(svc_updater) NOPASSWD: /usr/bin/python3 /mnt/Data/updater_zone/svc_scout.py
-bastian ALL=(svc_updater) NOPASSWD: /usr/bin/bash /mnt/Data/updater_zone/svc_updater.sh
-bastian ALL=(svc_manutentore) NOPASSWD: /usr/bin/bash /usr/local/sbin/svc_manutentore.sh
-# 4° corridoio — ingest (27/8)
-bastian ALL=(svc_ollama) NOPASSWD: /mnt/Data/vetrina_zone/vetrina_ingest.sh *
-bastian ALL=(svc_ollama) NOPASSWD: /usr/bin/bash /mnt/Data/vetrina_zone/motori_ollama.sh *
-bastian ALL=(svc_owu) NOPASSWD: /usr/bin/bash /mnt/Data/vetrina_zone/motori_owu.sh *

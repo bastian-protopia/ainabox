@@ -1,3 +1,20 @@
-nerdctl_root/
-__pycache__/
-*.pyc
+# SEGRETI (MAI in repo)
+*.key
+*.crt
+api_token.js
+.secrets/
+*token*
+
+# RUNTIME STATE
+*.log
+.lock_*
+.current_user
+.backup_dests.json
+
+# VENV (serve requirements.txt, non il venv)
+vetrina_zone/venv/
+
+# BACKUP DI SVILUPPO
+*.bkp-*
+*.ponte
+engine_zone/backups/

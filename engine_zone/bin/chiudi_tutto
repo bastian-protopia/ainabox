@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# AINABOX — Chiusura Servizi (v0.1a)
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
+# Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
+AIBOX=$(cat /etc/ainabox/dest 2>/dev/null) || { echo "ERRORE: /etc/ainabox/dest assente" >&2; exit 1; }
+# chiudi_tutto — Chiude TUTTI i servizi. VERIFICA DOPO OGNI KILL.
+# Ordine: OWU prima (chiama Ollama), poi Ollama, poi i processi.
+# Regola: il silenzio non è successo. Ogni kill è seguito da escalation.
+# Universale: zero UID hardcoded. Zero nomi utente.
+
+AINABOX_LOG="$AIBOX/vetrina_zone/ainabox.log"
+log() { echo "[$(date +%H:%M:%S)] [$1] $2" >> "$AINABOX_LOG" 2>/dev/null || true; }
+
+RUNTIME_PATH="$AIBOX/engine_zone/runtime/bin:$AIBOX/engine_zone/runtime:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# ── OWU ── stop (graceful) → kill (SIGKILL) → rm
+_U=$(id -u svc_owu 2>/dev/null)
+if [ -n "$_U" ]; then
+  sudo -u svc_owu env AIBOX="$AIBOX" HOME=/home/svc_owu XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    bash -c 'cd $AIBOX/owu_zone && nerdctl stop --time 5 open-webui' 2>/dev/null
+  sudo -u svc_owu env AIBOX="$AIBOX" HOME=/home/svc_owu XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    nerdctl kill open-webui 2>/dev/null
+  sudo -u svc_owu env AIBOX="$AIBOX" HOME=/home/svc_owu XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    nerdctl rm -f open-webui 2>/dev/null
+  log "chiudi_tutto" "OWU → stop+kill+rm completati"
+  echo "🛑 OWU → fermo"
+else
+  log "chiudi_tutto" "OWU: svc_owu assente, skip"
+  echo "⏭️  OWU → non presente"
+fi
+
+# ── Ollama ── stop (graceful) → kill (SIGKILL) → rm
+_U=$(id -u svc_ollama 2>/dev/null)
+if [ -n "$_U" ]; then
+  sudo -u svc_ollama env AIBOX="$AIBOX" HOME=/home/svc_ollama XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    bash -c 'cd $AIBOX/ollama_zone && nerdctl stop --time 5 ollama' 2>/dev/null
+  sudo -u svc_ollama env AIBOX="$AIBOX" HOME=/home/svc_ollama XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    nerdctl kill ollama 2>/dev/null
+  sudo -u svc_ollama env AIBOX="$AIBOX" HOME=/home/svc_ollama XDG_RUNTIME_DIR="/run/user/$_U" PATH="$RUNTIME_PATH" \
+    nerdctl rm -f ollama 2>/dev/null
+  sleep 1
+  if ss -tlnp 2>/dev/null | grep -q ':11434 '; then
+    _PID=$(ss -tlnp 2>/dev/null | grep ':11434 ' | grep -oP 'pid=\K[0-9]+' | head -1)
+    [ -n "$_PID" ] && kill -9 "$_PID" 2>/dev/null
+    log "chiudi_tutto" "Ollama: porta 11434 ancora LISTEN → kill -9 $_PID"
+  fi
+  log "chiudi_tutto" "Ollama → stop+kill+rm completati"
+  echo "🛑 Ollama → fermo"
+else
+  log "chiudi_tutto" "Ollama: svc_ollama assente, skip"
+  echo "⏭️  Ollama → non presente"
+fi
+
+# ── Speaches ── SIGTERM → SIGKILL
+pkill -u svc_speaches -f "uvicorn speaches.main" 2>/dev/null
+sleep 1
+pkill -9 -u svc_speaches -f "uvicorn speaches.main" 2>/dev/null
+log "chiudi_tutto" "Speaches → TERM+KILL inviati"
+echo "🛑 Speaches → fermo"
+
+# ── ComfyUI ── SIGTERM → verifica porta → SIGKILL
+pkill -u svc_comfy -f "main.py --port 8188" 2>/dev/null
+sleep 1
+if ss -tlnp 2>/dev/null | grep -q ':8188 '; then
+  _PID=$(ss -tlnp 2>/dev/null | grep ':8188 ' | grep -oP 'pid=\K[0-9]+' | head -1)
+  [ -n "$_PID" ] && kill -9 "$_PID" 2>/dev/null
+  log "chiudi_tutto" "ComfyUI: porta 8188 ancora LISTEN → kill -9 $_PID"
+fi
+log "chiudi_tutto" "ComfyUI → chiuso"
+echo "🛑 ComfyUI → fermo"
+
+# ── Hermes ── SIGTERM → SIGKILL
+  # ── Hermes (stanza user intatta) ──
+  sudo -u svc_hermes bash -c "cd /home/svc_hermes && XDG_RUNTIME_DIR=/run/user/$(id -u svc_hermes) podman stop --time 5 $(XDG_RUNTIME_DIR=/run/user/$(id -u svc_hermes) podman ps -q 2>/dev/null)" 2>/dev/null || true
+  pkill -f "hermes dashboard" 2>/dev/null || true
+  sleep 1
+  _hp=$(ss -tlnp 2>/dev/null | grep ":9119 " | grep -oP "pid=\K[0-9]+" | head -1)
+  [ -n "$_hp" ] && kill -9 "$_hp" 2>/dev/null || true
+log "chiudi_tutto" "Hermes → TERM+KILL inviati"
+echo "🛑 Hermes → fermo"
+
+echo ""
+log "chiudi_tutto" "FINE → 5 servizi arrestati (con escalation)"
+echo "✅ Tutti i servizi fermi. Filesystem pulito."
+echo "   → poweroff resta il gesto tuo (Regola 17)."

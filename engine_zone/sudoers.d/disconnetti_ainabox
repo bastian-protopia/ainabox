@@ -1,0 +1,1 @@
+CUR_USER ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/disconnetti_ainabox

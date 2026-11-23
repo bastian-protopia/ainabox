@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# ═══════════ PONTE AINABOX — chiave host ═══════════
+# Apre la scatola (LUKS + mount) e delega al cervello T7.
+# Nessuna logica applicativa: solo parametri di connessione.
+set -e
+UUID="3f39ed9f-cb1a-4509-aa38-37dc994d57a9"
+MNT="/mnt/Data"
+KEYFILE="/etc/luks-t7.key"
+
+# non root? mi ri-elevero (coperto dalla NOPASSWD di apri_ainabox)
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo bash "$0" "$@"
+fi
+
+# 1) trova il disco
+luks_dev=$(blkid -o device -t UUID="$UUID" 2>/dev/null)
+if [ -z "$luks_dev" ]; then
+    echo "PONTE: T7 (LUKS $UUID) non trovato. Collega il disco e riprova."
+    exit 1
+fi
+
+# 2) apre LUKS (keyfile se c'è, altrimenti password)
+if ! cryptsetup status t7 &>/dev/null; then
+    if [ -f "$KEYFILE" ]; then
+        cryptsetup luksOpen "$luks_dev" t7 --key-file="$KEYFILE"
+    else
+        cryptsetup luksOpen "$luks_dev" t7
+    fi
+fi
+
+# 3) monta
+if ! mountpoint -q "$MNT"; then
+    mkdir -p "$MNT"
+    mount /dev/mapper/t7 "$MNT"
+fi
+
+# 4) delega al cervello — il lavoro del ponte è finito
+exec bash "$MNT/engine_zone/apri_ainabox"

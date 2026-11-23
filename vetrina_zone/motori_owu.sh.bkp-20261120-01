@@ -1,0 +1,30 @@
+#!/bin/bash
+# AINABOX — Local Portable Sovereign AI
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
+# Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
+
+BIN_DIR="/mnt/ainabox/engine_zone/runtime"
+export PATH="$BIN_DIR/bin:$BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export HOME="/home/svc_owu"
+export XDG_RUNTIME_DIR="/run/user/$(id -u svc_owu)"
+cd /mnt/ainabox/owu_zone
+
+case "$1" in
+  on)
+    nerdctl rm -f open-webui 2>/dev/null
+    systemctl --user start containerd-rootless.service
+    nerdctl run -d --name open-webui -p 3000:8080 \
+      -v /mnt/ainabox/owu_zone:/app/backend/data \
+      -e OLLAMA_BASE_URL=http://$(hostname -I | awk '{print $1}'):11434 \
+      ghcr.io/open-webui/open-webui:main
+    echo "✅ OWU on"
+    ;;
+  off)
+    nerdctl stop open-webui 2>/dev/null
+    nerdctl rm open-webui 2>/dev/null
+    echo "✅ OWU off"
+    ;;
+  *)
+    echo "Uso: $0 {on|off}"; exit 1 ;;
+esac

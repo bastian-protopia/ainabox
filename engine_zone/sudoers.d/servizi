@@ -1,0 +1,4 @@
+%ainabox ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/chiudi_tutto
+%ainabox ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/avvia_servizio.sh *
+%ainabox ALL=(svc_ollama) NOPASSWD: /usr/bin/bash /usr/local/bin/stato_silo.sh ollama
+%ainabox ALL=(svc_owu) NOPASSWD: /usr/bin/bash /usr/local/bin/stato_silo.sh owu

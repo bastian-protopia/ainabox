@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# ═══════════ PONTE AINABOX — chiave host ═══════════
+# Resta l'utente. Si eleva solo dove serve (LUKS, mount, cervello).
+# Browser: nella sessione, senza su/sudo.
+set -e
+UUID="3f39ed9f-cb1a-4509-aa38-37dc994d57a9"
+MNT="/mnt/Data"
+KEYFILE="/etc/luks-t7.key"
+# 1) trova il disco
+luks_dev=$(sudo blkid -o device -t UUID="$UUID" 2>/dev/null)
+if [ -z "$luks_dev" ]; then
+    echo "PONTE: T7 non trovato. Collega il disco e riprova."
+    exit 1
+fi
+# 2) apre LUKS
+if ! sudo cryptsetup status t7 &>/dev/null; then
+    if [ -f "$KEYFILE" ]; then
+        sudo cryptsetup luksOpen "$luks_dev" t7 --key-file="$KEYFILE"
+    else
+        sudo cryptsetup luksOpen "$luks_dev" t7
+    fi
+fi
+# 3) monta (health check: se "mounted" ma rotto → remont)
+if mountpoint -q "$MNT" 2>/dev/null; then
+    if [ ! -f "$MNT/engine_zone/apri_ainabox" ]; then
+        echo "  [!] /mnt/Data montato ma non accessibile. Remount."
+        sudo umount -l "$MNT" 2>/dev/null || true
+        sleep 2
+        sudo mount /dev/mapper/t7 "$MNT"
+    fi
+else
+    sudo mkdir -p "$MNT"
+    sudo mount /dev/mapper/t7 "$MNT"
+fi
+# 4) cervello (root)
+sudo bash "$MNT/engine_zone/apri_ainabox"
+# 5) Browser — nella sessione dell'utente (siamo già l'utente)
+#    Agnostico: Flatpak vs nativo · X11 vs Wayland · Chromium vs Gecko
+#    Consulenza: Leo (20/10/2026) — no hardcoded wayland-N, no portal bypass
+BROWSER_DESK=$(awk -F= '/x-scheme-handler\/https/{print $2}' "$HOME/.config/mimeapps.list" 2>/dev/null)
+[ -z "$BROWSER_DESK" ] && BROWSER_DESK="firefox.desktop"
+APP_ID="${BROWSER_DESK%.desktop}"
+URL="http://127.0.0.1:8765"
+
+# ── Rileva sessione grafica ──
+# Leo: non fabricare wayland-0. Se WAYLAND_DISPLAY c'è → la uso.
+#      Se non c'è e DISPLAY non c'è → fallback :0 (X11 puro).
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    : # Wayland: eredito WAYLAND_DISPLAY dalla sessione. Non tocco.
+elif [ -z "$DISPLAY" ]; then
+    export DISPLAY=":0"  # X11 puro, no Wayland. Fallback sicuro (X0 = :0)
+fi
+
+# ── Rileva: Flatpak? ──
+IS_FLATPAK=0
+if command -v flatpak &>/dev/null && flatpak list --app 2>/dev/null | grep -qi "$APP_ID"; then
+    IS_FLATPAK=1
+fi
+
+if [ "$IS_FLATPAK" -eq 1 ]; then
+    # ── Flatpak: no --user-data-dir (Flatpak lo mangia) ──
+    #    Leo: flatpak run non richiede il portal per partire.
+    setsid flatpak run "$APP_ID" "$URL" > /dev/null 2>&1 &
+    sleep 4
+    if pgrep -f "$APP_ID" > /dev/null 2>&1; then
+        echo "  [ok] Browser aperto ($BROWSER_DESK, Flatpak)."
+    else
+        echo "  [!] Browser non si è aperto. Digita: $URL"
+    fi
+else
+    # ── Nativo: profilo isolato /tmp/ainabox-profile ──
+    PROFILE="/tmp/ainabox-profile"
+    if echo "$APP_ID" | grep -qiE "chromium|chrome|brave|edge|vivaldi|opera"; then
+        PROFILE_FLAG="--user-data-dir"
+    else
+        PROFILE_FLAG="--profile"
+    fi
+    DESK_FILE=$(find /usr/share/applications "$HOME/.local/share/applications" -name "$BROWSER_DESK" 2>/dev/null | head -1)
+    if [ -n "$DESK_FILE" ]; then
+        BROWSER_BIN=$(grep "^Exec=" "$DESK_FILE" | head -1 | sed 's/^Exec=//' | awk '{print $1}')
+        mkdir -p "$PROFILE"
+        setsid "$BROWSER_BIN" "$PROFILE_FLAG" "$PROFILE" "$URL" > /dev/null 2>&1 &
+        sleep 4
+        if pgrep -f "ainabox-profile" > /dev/null 2>&1; then
+            echo "  [ok] Browser aperto ($BROWSER_DESK)."
+        else
+            echo "  [!] Browser non si è aperto. Digita: $URL"
+        fi
+    else
+        echo "  [!] Browser non trovato. Digita: $URL"
+    fi
+fi

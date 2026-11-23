@@ -1,0 +1,222 @@
+{
+  "menu": {
+    "chat": "Chat",
+    "grafica": "Grafica",
+    "assistente": "Assistente",
+    "spegni": " SPEGNI AINABOX",
+    "hardware": "Hardware e Spazio Occupato",
+    "stato_catena": "Stato catena",
+    "connessioni": "Connessioni",
+    "mappa": "Mappa della Conoscenza",
+    "aggiornamenti": "Aggiornamenti",
+    "lingua": "Lingua",
+    "backup": "Backup",
+    "backup_esterno": "Backup Esterno",
+    "azioni": "Azioni"
+  },
+  "log": {
+    "copia": "Copia",
+    "chiudi": "Chiudi"
+  },
+  "pann": {
+    "servizi_attivi": "Servizi attivi:",
+    "nome": "NOME",
+    "dove": "DOVE",
+    "simula": "SIMULA",
+    "avvia_backup": "AVVIA BACKUP",
+    "backup_esistenti": "Backup esistenti",
+    "aggiorna": "Aggiorna"
+  },
+  "ph": {
+    "percorso": "/path/su/disco"
+  },
+  "backup": {
+    "simulazione_ok": "SIMULAZIONE OK → {artifact}",
+    "completo": "BACKUP COMPLETO → {gb} GB",
+    "connessione_persa": "⚠️ connessione persa",
+    "nessuno": "Nessun backup",
+    "delete_btn": "Elimina 🗑️",
+    "del_prefix": "Eliminare definitivamente",
+    "del_suffix": "Questa azione non è reversibile."
+  },
+  "dlg": {
+    "token": "Token AINABOX:",
+    "ingest": "Ingest {file} -> \"{nome}\" ?",
+    "rimuovi_file": "Rimuovere {file} ?",
+    "backup_path": "Inserisci un percorso di backup",
+    "elimina": "Eliminare definitivamente {name} ?\nQuesta azione non è reversibile.",
+    "rimuovi_ollama": "Rimuovere \"{nome}\" da Ollama?",
+    "err_non_rimosso": "Errore: {det} non rimosso.",
+    "err_conn": "Errore di connessione."
+  },
+  "sp": {
+    "corso": "Spegnimento in corso …",
+    "spegnendo": "⏳ Spegnendo i servizi…",
+    "fallito": "❌ Spegnimento fallito. {errore}",
+    "torna_menu": "Per usare uno strumento, clicca una voce dal menu principale",
+    "benvenuto": "Per usare uno strumento, clicca una voce dal menu principale",
+    "errore": "Errore rsync",
+    "errore_gen": "Errore"
+  },
+  "avvio": {
+    "chat_prep": "Chat in preparazione, attendi un attimo…",
+    "grafica_prep": "Grafica in preparazione, attendi un attimo…",
+    "assistente_prep": "Assistente in preparazione, attendi un attimo…",
+    "generale": "⏳ Avviamento…"
+  },
+  "servizi": {
+    "chat_gia": "Chat già attiva.",
+    "chat_attiva": "Chat testuale è attiva.",
+    "apri": "APRI",
+    "grafica_gia": "Grafica già attiva.",
+    "grafica_attiva": "Grafica attiva.",
+    "assist_gia": "Assistente già attivo.",
+    "assist_attivo": "Assistente attivo.",
+    "gen_attivo": "{nome} attivo.",
+    "vocale_attiva": "Chat vocale è attiva.",
+    "apri_tab": "Clicca per aprirla in una nuova scheda"
+  },
+  "avvertenze": {
+    "titolo": "⚠️ Avvertenze",
+    "hdr": "Avvertenze:",
+    "ok": "Compatibile con questo hardware",
+    "warn": "Lento e rischio crash su questo hardware",
+    "no": "non gestibile su questo hardware",
+    "inline": "⚠️ Avvertenze"
+  },
+  "errore": {
+    "nessun_modello": "Nessun modello installato",
+    "vai_agg": "⚠️ Vai su Aggiorna Modelli",
+    "non_partita_chat": "Chat non è partita",
+    "non_partita_grafica": "Grafica non è partita",
+    "non_partita_gen": "{nome} non è partito",
+    "spegni_riprova": "Spegni AINABOX e riprova.",
+    "controlla_log": "Controlla i LOG",
+    "gpu_insufficiente": "GPU insufficiente per CHAT. Serve min 6 GB libera.",
+    "nessun_modello_ollama": "Nessun modello Ollama installato. Vai su Aggiorna Modelli per scaricarne uno.",
+    "avvio_generico": "Avvio fallito. Controlla i log.",
+    "avvio_tts": "Avvio TTS fallito.",
+    "avvio_stt": "Avvio STT fallito."
+  },
+  "agg": {
+    "titolo_chat": "Aggiorna modelli Chat",
+    "sotto_chat": "(modelli LLM)",
+    "titolo_grafica": "Aggiorna modelli Grafica",
+    "sotto_grafica": "(modelli diffusione)",
+    "titolo_servizi": "Aggiorna servizi",
+    "sotto_servizi": "(Ollama, Open WebUI, ComfyUI, Speaches, Hermes)",
+    "titolo_ainabox": "Aggiorna AINABOX",
+    "caricando": "Caricando modelli…",
+    "nessun_installato": "Nessun modello installato.",
+    "motore_non_attivo": "Motore Chat non attivo.",
+    "motore_non_avviato": "⚠️ Motore non avviato.",
+    "cerca": "⏳ Cerca…",
+    "trovati": "{count} modelli trovati",
+    "nessun_trovato": "Nessun modello trovato.",
+    "gia_installato": "Già installato",
+    "selezionato": "Selezionato",
+    "scaricando": "⏳ Scaricando {nome}…",
+    "nessun_gguf": "❌ Nessun file .gguf nel repo",
+    "scaricando_file": "⏳ Scaricando {file} ({gb} GB)…",
+    "installato": "✅ Modello installato.",
+    "fonte_non_supp": "❌ Fonte non supportata",
+    "in_corso": "⏳ Aggiornamento in corso…",
+    "fatto": "✅ {nome} aggiornato.",
+    "fallito": "⚠️ Aggiornamento non riuscito.",
+    "err_rete": "⚠️ Errore di rete.",
+    "ainabox_corso": "⏳ Aggiornamento AINABOX in corso…",
+    "ainabox_ok": "✅ AINABOX aggiornata a {versione}.",
+    "rollback_corso": "⏳ Rollback in corso…",
+    "rollback_ok": "✅ {nome}: rollback completato.",
+    "rollback_fallito": "⚠️ Rollback non riuscito.",
+    "avvisa_spegni": "⚠️ Un aggiornamento richiede lo spegnimento dei servizi attivi.",
+    "procedi": "PROCEDI",
+    "rimuovi": "Rimuovi",
+    "aggiorna": "AGGIORNA",
+    "installati": "Installati",
+    "salva": "SALVA",
+    "hermes_nota": "Il rilevamento della disponibilità degli aggiornamenti per Hermes è disabilitato per motivi di sicurezza. Tuttavia l'aggiornamento è possibile, se disponibile. Clicca Aggiorna per aggiornare."
+  },
+  "agg_btn": {
+    "aggiorna": "AGGIORNA",
+    "rollback": "ROLLBACK",
+    "in_corso": "⏳ IN CORSO…",
+    "cerca": "CERCA",
+    "scarica": "SCARICA",
+    "rimuovi": "Rimuovi"
+  },
+  "agg_msg": {
+    "installati": "Installati",
+    "rimosso": "{nome} rimosso.",
+    "non_ragg": "Non raggiungibile.",
+    "rollback_a": "✅ {motore}: rollback a {versione}.",
+    "tornato_a": "✅ Tornato a {versione}.",
+    "avvisa_spegni": "Aggiornamenti spegnerà momentaneamente tutti i servizi:",
+    "procedi": "PROCEDI"
+  },
+  "hf": {
+    "titolo": "Token HF",
+    "token_vuoto": "❌ Token vuoto",
+    "salvataggio": "⏳ Salvataggio…",
+    "salva": "SALVA"
+  },
+  "stato": {
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "srv": {
+    "whisper_attivo": "Whisper attivo. CHAT intatta.",
+    "nessun_llm": "Nessun LLM attivo. Whisper ok.",
+    "voce_spenta": "Voce spenta.",
+    "modello_ripristinato": "Modello ripristinato ({from}).",
+    "hf_salvato": "Token HF salvato ✅",
+    "nessun_alternativo": "Nessun modello alternativo disponibile. Scarica un LLM più piccolo (es. 7B) per usare la voce.",
+    "modello_riotto": "Modello ridotto ({big} → {small}). CHAT sempre attiva.",
+    "voce_spenta_ripristinato": "Voce spenta. Modello ripristinato ({from})."
+  },
+  "vocale": {
+    "modalita": "Modalità vocale",
+    "desc": "Parla e ascolta oltre a leggere e scrivere."
+  },
+  "ps": {
+    "nessun_modello": "Nessun modello in uso",
+    "oom": "❌ Chat non risponde. Memoria insufficiente: il modello è stato chiuso.",
+    "vocale_fix": "⚠️ Spegni modalità vocale o usa un modello più piccolo.",
+    "down": "⚠️ Chat non risponde",
+    "stat": "⚡ {name} · VRAM {vram} GB · Offload {ram} GB RAM",
+    "vocale_budget": "⚠️ Vocale ON: −2.5 GB dal budget"
+  },
+  "sse": {
+    "nessun_modello_ollama": "Nessun modello Ollama installato. Vai su Aggiorna Modelli per scaricarne uno.",
+    "gpu_insuff": "GPU insufficiente per CHAT. Serve min 6 GB libera.",
+    "chat_avvio": "Chat in avvio…",
+    "chat_fail": "❌ Chat non è partita. Spegni AINABOX e riprova. Controlla i LOG.",
+    "hw_no_model": "⚠️ Avvertenza: nessuno dei modelli installati può essere gestito da questo hardware",
+    "chat_ok": "✅ Chat testuale è attiva.",
+    "nessun_modello_grafica": "Nessun modello per Grafica installato. Vai su Aggiorna Modelli per scaricarne uno.",
+    "grafica_avvio": "Grafica in avvio…",
+    "grafica_fail": "❌ Grafica non è partita. Spegni AINABOX e riprova. Controlla i LOG.",
+    "grafica_ok": "✅ GRAFICA attiva.",
+    "ascolto_avvio": "Modalità ascolto in avvio…",
+    "ascolto_fail": "❌ Modalità vocale non è partita. Spegni AINABOX e riprova. Controlla i LOG.",
+    "ascolto_ok": "✅ Modalità ascolto attiva. Aina può parlarti.",
+    "assistente_avvio": "Assistente in avvio…",
+    "assistente_fail": "❌ Assistente non è partito. Spegni AINABOX e riprova. Controlla i LOG.",
+    "assistente_ok": "✅ Assistente attivo. Dashboard: http://127.0.0.1:9119"
+  },
+  "palco": {
+    "assistente": "Assistente",
+    "grafica": "Grafica"
+  },
+  "toggle": {
+    "gia": "Già attivo.",
+    "attivo": "Attivo."
+  },
+  "pannelli": {
+    "servizi_label": "Servizi attivi:"
+  },
+  "hw": {
+    "cpu": "Processore",
+    "gpu": "Scheda video"
+  }
+}

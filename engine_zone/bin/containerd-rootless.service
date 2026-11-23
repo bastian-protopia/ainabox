@@ -1,0 +1,16 @@
+[Unit]
+Description=AINABOX containerd-rootless (SVC_NAME)
+After=network.target
+
+[Service]
+Environment=XDG_DATA_HOME=$AIBOX/nerdctl_root/SVC_NAME
+Environment=PATH=$AIBOX/engine_zone/runtime/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/
+ExecStart=/bin/bash $AIBOX/engine_zone/runtime/containerd-rootless.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

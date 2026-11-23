@@ -1,0 +1,19 @@
+# VETRINA — 3 corridoi stretti, nominati, solo per la catena (28/8)
+CUR_USER ALL=(svc_updater) NOPASSWD: /usr/bin/python3 $AIBOX/updater_zone/svc_scout.py
+CUR_USER ALL=(svc_updater) NOPASSWD: /usr/bin/bash $AIBOX/updater_zone/svc_updater.sh
+CUR_USER ALL=(svc_manutentore) NOPASSWD: /usr/bin/bash /usr/local/sbin/svc_manutentore.sh
+# 4° corridoio — ingest (27/8)
+CUR_USER ALL=(svc_ollama) NOPASSWD: $AIBOX/vetrina_zone/vetrina_ingest.sh *
+CUR_USER ALL=(svc_ollama) NOPASSWD: /usr/bin/bash $AIBOX/vetrina_zone/motori_ollama.sh *
+CUR_USER ALL=(svc_owu) NOPASSWD: /usr/bin/bash $AIBOX/vetrina_zone/motori_owu.sh *
+# VETRINA — demotica (22/9): corridoi dal servizio, non da root
+svc_vetrina ALL=(root)         NOPASSWD: /usr/bin/bash /usr/local/bin/chiudi_tutto, /usr/bin/bash /usr/local/bin/avvia_servizio.sh *
+svc_vetrina ALL=(root)         NOPASSWD: /usr/bin/bash $AIBOX/vetrina_zone/bin/backup_op.sh *
+svc_vetrina ALL=(svc_owu)      NOPASSWD: /usr/bin/bash /usr/local/bin/stato_silo.sh owu
+svc_vetrina ALL=(svc_ollama)   NOPASSWD: /usr/bin/bash /usr/local/bin/stato_silo.sh ollama
+svc_vetrina ALL=(svc_updater)  NOPASSWD: /usr/bin/python3 $AIBOX/updater_zone/svc_scout.py, /usr/bin/bash $AIBOX/updater_zone/svc_updater.sh
+svc_vetrina ALL=(svc_manutentore) NOPASSWD: /usr/bin/bash /usr/local/sbin/svc_manutentore.sh
+# CORRIDOIO RUNTIME (22/9): svc_vetrina lancia i binari runtime come silos
+svc_vetrina ALL=(svc_ollama) NOPASSWD: $AIBOX/engine_zone/runtime/bin/*
+svc_vetrina ALL=(svc_owu)    NOPASSWD: $AIBOX/engine_zone/runtime/bin/*
+svc_vetrina ALL=(root) NOPASSWD: /usr/bin/bash $AIBOX/engine_zone/runtime/bin/agg_ainabox.sh *

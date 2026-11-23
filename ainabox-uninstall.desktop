@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Uninstall AINABOX
+Name[en]=Uninstall AINABOX
+Comment=Rimuove AINABOX
+Exec=bash /usr/local/bin/ainabox-uninstall
+Icon=ainabox
+Terminal=false
+Categories=Office;Utility;

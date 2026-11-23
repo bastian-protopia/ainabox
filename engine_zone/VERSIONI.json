@@ -1,0 +1,32 @@
+{
+  "ollama": {
+    "attuale": "0.40.6",
+    "precedente": "0.40.2",
+    "data": "2026-10-18",
+    "repo": "docker.io/ollama/ollama"
+  },
+  "owu": {
+    "attuale": "v0.12.2",
+    "precedente": "v0.11.4",
+    "data": "2026-10-15",
+    "repo": "ghcr.io/open-webui/open-webui"
+  },
+  "comfy": {
+    "attuale": "0.32.0",
+    "precedente": "null",
+    "data": "2026-10-15",
+    "repo": "github.com/comfyanonymous/ComfyUI"
+  },
+  "speaches": {
+    "attuale": "v1.0.0",
+    "precedente": "null",
+    "data": "2026-10-15",
+    "repo": "github.com/speaches-ai/speaches"
+  },
+  "hermes": {
+    "attuale": "0.21.7",
+    "precedente": "null",
+    "data": "2026-10-15",
+    "repo": "github.com/NousResearch/hermes-agent"
+  }
+}

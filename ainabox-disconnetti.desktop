@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AINABOX disconnetti
+Name[en]=AINABOX — DISCONNECT
+Comment=Restituisce tutto: chiudi servizi, rimuovi policy, smonta AINABOX
+Exec=sudo bash /usr/local/bin/disconnetti_ainabox
+Icon=ainabox
+Terminal=true
+Categories=Office;Utility;

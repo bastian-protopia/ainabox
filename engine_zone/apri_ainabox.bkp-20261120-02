@@ -1,0 +1,660 @@
+#!/usr/bin/env bash
+# AINABOX — Apertura (v0.1a)
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
+# Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
+echo "═══════════════════════════════════════════"
+echo "  AINABOX — BOOTSTRAP + AVVIO (v2)"
+echo "═══════════════════════════════════════════"
+
+USERS=(
+    "svc_ollama::4800:/home/svc_ollama:/usr/sbin/nologin"
+    "svc_owu::4800:/home/svc_owu:/usr/sbin/nologin"
+    "svc_comfy::4800:/home/svc_comfy:/usr/sbin/nologin"
+    "svc_speaches::4800:/home/svc_speaches:/bin/sh"
+    "svc_updater::5500:/home/svc_updater:/usr/sbin/nologin"
+    "svc_manutentore::5501:/home/svc_manutentore:/usr/sbin/nologin"
+    "svc_vetrina::4800:/home/svc_vetrina:/usr/sbin/nologin"
+    "svc_hermes::4800:/home/svc_hermes:/usr/sbin/nologin"
+)
+AIBOX=$(cat /etc/ainabox/dest 2>/dev/null) || { echo "ERRORE: /etc/ainabox/dest non trovato" >&2; exit 1; }
+GRP_DEF=("ai_services:4800" "engine_mgr:5500" "manutentore:5501" "ainabox:4899")
+T7_BIN="$AIBOX/engine_zone/bin"
+T7_SUDOERS="$AIBOX/engine_zone/sudoers.d"
+RUNTIME="$AIBOX/engine_zone/runtime"
+CURRENT_USER="${SUDO_USER:-$(whoami)}"
+# Fix: sotto pkexec SUDO_USER vuoto, whoami=root → trova l'utente grafico
+if [ "$CURRENT_USER" = "root" ] && [ -d /run/user ]; then
+    _uid=$(ls /run/user/ 2>/dev/null | grep -v '^0$' | sort -n | head -1)
+    [ -n "$_uid" ] && CURRENT_USER=$(getent passwd "$_uid" 2>/dev/null | cut -d: -f1)
+fi
+# GUARD D-SUD: se vuoto o root → leggi .current_user → se ancora no → abort
+if [ -z "$CURRENT_USER" ] || [ "$CURRENT_USER" = "root" ]; then
+  [ -f "$AIBOX/vetrina_zone/.current_user" ] && CURRENT_USER=$(head -1 "$AIBOX/vetrina_zone/.current_user" 2>/dev/null)
+fi
+if [ -z "$CURRENT_USER" ] || [ "$CURRENT_USER" = "root" ]; then
+  echo "ERRORE: utente non identificabile. Abort." >&2
+  exit 1
+fi
+case "$CURRENT_USER" in svc_*|root) echo "ERRORE: $CURRENT_USER non è un utente umano. Abort." >&2; exit 1 ;; esac
+
+echo ""
+# ── D-PM: package manager universale ──
+PKG=""
+if [ -r /etc/os-release ]; then . /etc/os-release 2>/dev/null || true; fi
+case " ${ID:-} ${ID_LIKE:-} " in
+  *ubuntu*|*debian*|*mint*)
+    if command -v apt-get >/dev/null 2>&1; then PKG="apt-get"; fi
+    if [ -z "$PKG" ] && command -v apt >/dev/null 2>&1; then PKG="apt"; fi ;;
+  *fedora*|*rhel*|*rocky*|*centos*)
+    if command -v dnf >/dev/null 2>&1; then PKG="dnf"; fi ;;
+  *arch*|*manjaro*)
+    if command -v pacman >/dev/null 2>&1; then PKG="pacman"; fi ;;
+  *suse*|*sles*)
+    if command -v zypper >/dev/null 2>&1; then PKG="zypper"; fi ;;
+esac
+
+if [ -z "$PKG" ] && command -v apt-get >/dev/null 2>&1; then PKG="apt-get"; fi
+if [ -z "$PKG" ] && command -v apt >/dev/null 2>&1; then PKG="apt"; fi
+if [ -z "$PKG" ] && command -v dnf >/dev/null 2>&1; then PKG="dnf"; fi
+if [ -z "$PKG" ] && command -v pacman >/dev/null 2>&1; then PKG="pacman"; fi
+if [ -z "$PKG" ] && command -v zypper >/dev/null 2>&1; then PKG="zypper"; fi
+
+RUN_PRIV=""
+if [ "$(id -u 2>/dev/null)" != "0" ]; then RUN_PRIV="sudo"; fi
+
+pkg_install() {
+  if [ -z "$PKG" ]; then
+    echo "  [!] package manager assente: $* non installato."
+    return 1
+  fi
+  case "$PKG" in
+    apt-get) $RUN_PRIV apt-get install -y -q "$@" 2>/dev/null ;;
+    apt)     $RUN_PRIV apt install -y "$@" 2>/dev/null ;;
+    dnf)     $RUN_PRIV dnf install -y "$@" 2>/dev/null ;;
+    pacman)  $RUN_PRIV pacman -S --noconfirm "$@" 2>/dev/null ;;
+    zypper)  $RUN_PRIV zypper install -y "$@" 2>/dev/null ;;
+    *)
+      echo "  [!] PM non riconosciuto: $PKG"
+      return 1
+      ;;
+  esac
+}
+
+pkg_install_candidates() {
+  local what="$1"
+  shift
+  local pkg
+  for pkg in "$@"; do
+    if pkg_install "$pkg"; then
+      echo "  [ok] $what installato ($pkg)."
+      return 0
+    fi
+  done
+  echo "  [!] $what non installato (provati: $*)."
+  return 1
+}
+echo "── FASE 0: Verifiche ──"
+if command -v nvidia-smi &>/dev/null; then
+    GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+    GPU_MEM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+    echo "  GPU: ${GPU_NAME} (${GPU_MEM} MB)"
+else
+    echo "  [!] GPU NVIDIA non rilevata. CPU-only."
+fi
+RAM_TOTAL=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}')
+echo "  RAM: ${RAM_TOTAL} GB"
+# ── GUARD CDI: spec GPU → container ──
+if command -v nvidia-ctk &>/dev/null && nvidia-smi &>/dev/null; then nvidia-ctk cdi generate --output /etc/cdi/nvidia.yaml 2>/dev/null && echo "  [ok] CDI spec generata." || echo "  [!] CDI spec: fallita (CPU-only)."; fi
+# ── GUARD C7: ffmpeg (Speaches TTS dipendenza) ──
+command -v ffmpeg &>/dev/null || pkg_install_candidates "ffmpeg" ffmpeg || true
+
+echo ""
+echo "── FASE 1: Bootstrap host ──"
+# ── GUARD D: iptables symlink (se assente) ──
+[ -x /usr/bin/iptables ] || sudo ln -sf /usr/sbin/iptables /usr/bin/iptables 2>/dev/null
+# ── GUARD E: CNI plugins (se /opt/cni/bin/bridge assente) ──
+[ -f /opt/cni/bin/bridge ] || { mkdir -p /opt/cni/bin && cp "$AIBOX/engine_zone/runtime/cni/*" /opt/cni/bin/ && chmod +x /opt/cni/bin/*; }
+# ── GUARD C5: ripulitura post-shutdown ──
+if command -v dpkg &>/dev/null; then dpkg --audit 2>/dev/null | grep -qE "half-configured|unpacked" && { echo "  [fix] dpkg half-configured -> repair"; dpkg --configure -a 2>/dev/null || true; }; fi
+rm -f /tmp/ainabox-profile/cert9.db.lock /tmp/ainabox-profile/.lock 2>/dev/null
+for _pid in $(ls /run/systemd/inhibit/ 2>/dev/null); do kill -9 "$_pid" 2>/dev/null || true; done
+for entry in "${GRP_DEF[@]}"; do
+    gname="${entry%%:*}"
+    ggid="${entry##*:}"
+    if getent group "$gname" &>/dev/null; then
+        echo "  [ok] gruppo $gname (già esiste)"
+    else
+        groupadd --system --gid "$ggid" "$gname" 2>/dev/null \
+            && echo "  [ok] gruppo $gname creato" \
+            || echo "  [!] gruppo $gname fallimento"
+    fi
+done
+
+if id -nG "$CURRENT_USER" 2>/dev/null | grep -qw "ainabox"; then
+    echo "  [ok] $CURRENT_USER già in AINABOX"
+else
+    usermod -aG ainabox "$CURRENT_USER" 2>/dev/null \
+        && echo "  [ok] $CURRENT_USER in AINABOX" \
+        || echo "  [!] usermod AINABOX fallito"
+fi
+
+for entry in "${USERS[@]}"; do
+    IFS=':' read -r uname uid gid home shell <<< "$entry"
+    if id "$uname" &>/dev/null; then
+        echo "  [ok] utente $uname (già esiste)"
+    else
+        if [ -n "$uid" ]; then
+            useradd --system --uid "$uid" --gid "$gid" \
+                    --home-dir "$home" --shell "$shell" "$uname" 2>/dev/null
+        else
+            useradd --system --gid "$gid" \
+                    --home-dir "$home" --shell "$shell" "$uname" 2>/dev/null
+        fi \
+            && echo "  [ok] utente $uname creato" \
+            || echo "  [!] utente $uname fallimento"
+    fi
+done
+
+for entry in "${USERS[@]}"; do
+    IFS=':' read -r uname uid gid home shell <<< "$entry"
+    if ! grep -q "^${uname}:" /etc/subuid 2>/dev/null; then
+        echo "${uname}:100000:65536" >> /etc/subuid
+        echo "${uname}:100000:65536" >> /etc/subgid
+        echo "  [ok] subuid/subgid $uname"
+    fi
+done
+
+for entry in "${USERS[@]}"; do
+    IFS=':' read -r uname uid gid home shell <<< "$entry"
+    rundir="/run/user/$(id -u "$uname" 2>/dev/null)"
+    [ -d "$home" ] || { mkdir -p "$home" && chown "$uname" "$home" && chmod 750 "$home"; }
+    if [ ! -d "$rundir" ]; then
+        mkdir -p "$rundir" && chown "$uname" "$rundir" && chmod 700 "$rundir"
+        echo "  [ok] $rundir creato"
+    fi
+done
+
+echo "── FASE 2: LUKS + Mount ──"
+_AINABOX_MODE=$(cat /etc/ainabox/mode 2>/dev/null || echo "luks")
+
+if [ "$_AINABOX_MODE" = "cartella" ]; then
+    if [ -e "$AIBOX" ] && [ -d "$AIBOX"/ ]; then
+        echo "  [ok] $AIBOX (cartella) accessibile."
+    else
+        echo "  [X] $AIBOX non disponibile. Symlink assente o rotto."
+        exit 1
+    fi
+else
+    _LUKS_UUID=$(grep "^UUID=" /etc/ainabox/luks 2>/dev/null | cut -d= -f2)
+    [ -z "$_LUKS_UUID" ] && _LUKS_UUID="3f39ed9f-cb1a-4509-aa38-37dc994d57a9"
+
+    if [ ! -e /dev/mapper/ainabox ]; then
+        luks_dev=$(blkid -o device -t UUID="$_LUKS_UUID" 2>/dev/null || true)
+        if [ -z "$luks_dev" ]; then
+            luks_dev=$(blkid -o device 2>/dev/null | while read -r _d; do
+                blkid "$_d" 2>/dev/null | grep -q 'crypto_LUKS' && echo "$_d" && break
+            done)
+            if [ -n "$luks_dev" ]; then
+                echo "  [warn] UUID stale. Fallback: primo LUKS attivo → $luks_dev"
+                _NEW_UUID=$(blkid -s UUID -o value "$luks_dev" 2>/dev/null)
+                printf "UUID=%s\nMAPPER=ainabox\nKEYFILE=/etc/luks-keys/ainabox.key\n" "$_NEW_UUID" > /etc/ainabox/luks 2>/dev/null
+                echo "  [ok] /etc/ainabox/luks aggiornato."
+            else
+                echo "  [X] Disco SSD non trovato. È collegato?"
+                exit 1
+            fi
+        fi
+        if [ -f /etc/luks-keys/ainabox.key ]; then
+            cryptsetup luksOpen "$luks_dev" ainabox --key-file=/etc/luks-keys/ainabox.key \
+                && echo "  [ok] LUKS SSD aperto (keyfile)." \
+                || { echo "  [X] LUKS open FALLITO."; exit 1; }
+        else
+            cryptsetup luksOpen "$luks_dev" ainabox \
+                && echo "  [ok] LUKS SSD aperto." \
+                || { echo "  [X] LUKS open FALLITO."; exit 1; }
+        fi
+    else
+        echo "  [ok] LUKS SSD già aperto."
+    fi
+    if mountpoint -q "$AIBOX" 2>/dev/null; then
+        echo "  [ok] "$AIBOX" già montato."
+    else
+        mount /dev/mapper/ainabox "$AIBOX" \
+            && echo "  [ok] "$AIBOX" montato." \
+            || { echo "  [X] MOUNT FALLITO."; exit 1; }
+    fi
+fi
+# Ripristino attraversamento zone (idempotente, T7 no-op)
+for _zone in engine_zone ollama_zone owu_zone comfy_zone speaches_zone hermes_zone updater_zone vetrina_zone; do
+    _zdir="$AIBOX/$_zone"
+    [ -d "$_zdir" ] && { sudo chgrp ai_services "$_zdir" 2>/dev/null; sudo chmod g+rx "$_zdir" 2>/dev/null; }
+done
+# ── Chown svc_* zone (tar czf non preserva gruppo, principio 11) ──
+sudo chown -R svc_owu:ai_services "$AIBOX/owu_zone/" 2>/dev/null
+sudo chown -R svc_ollama:ai_services "$AIBOX/ollama_zone/" 2>/dev/null
+sudo chown -R svc_comfy:ai_services "$AIBOX/comfy_zone/" 2>/dev/null
+sudo chown -R svc_speaches:ai_services "$AIBOX/speaches_zone/" 2>/dev/null
+# ── C19: chown hermes_zone ──
+sudo chown -R svc_hermes:ai_services "$AIBOX/hermes_zone/" 2>/dev/null
+    mkdir -p "$AIBOX/hermes_zone/work" "$AIBOX/hermes_zone/wiki" 2>/dev/null
+    echo "  [ok] hermes_zone/work + wiki/ presenti."
+# ── Chown svc_vetrina (vetrina_zone: lock seriale) ──
+sudo chown -R svc_vetrina:ai_services "$AIBOX/vetrina_zone/" 2>/dev/null
+# ── C18: ruamel.yaml (dipendenza Hermes) ──
+_PY=$(ls "$AIBOX/hermes_zone/tools/python-*/bin/python3" 2>/dev/null | head -1) && [ -n "$_PY" ] && $_PY -c "import ruamel.yaml" 2>/dev/null || { $_PY -m pip install -e "$AIBOX/hermes_zone/hermes-agent/" 2>/dev/null && echo "  [ok] ruamel.yaml installato." || echo "  [!] ruamel.yaml install fallito."; }
+# ── GUARD B: Venv Vetrina (fastapi uvicorn requests) ──
+[ -f "$AIBOX/vetrina_zone/venv/bin/pip" ] || { python3 -m venv "$AIBOX/vetrina_zone/venv" 2>/dev/null && "$AIBOX/vetrina_zone/venv/bin/pip" install -q -r "$AIBOX/vetrina_zone/requirements.txt" 2>/dev/null; }
+# ── GUARD C: mkdir modelli ──
+sudo mkdir -p "$AIBOX/modelli/ollama_modelli/" 2>/dev/null
+setfacl -m u:svc_ollama:rwx "$AIBOX/modelli/ollama_modelli/"
+# ── GUARD F: chown venv ComfyUI ──
+[ -d "$AIBOX/comfy_zone/ComfyUI/venv" ] && sudo chown -R svc_comfy:ai_services "$AIBOX/comfy_zone/ComfyUI/venv/" 2>/dev/null
+# ── GUARD C6: kornia_rs (manylinux se target-cpu=native fallisce) ──
+if ! "$AIBOX/comfy_zone/ComfyUI/venv/bin/python3" -c "import kornia_rs" 2>/dev/null; then
+    "$AIBOX/comfy_zone/ComfyUI/venv/bin/pip" install --force-reinstall --no-deps kornia-rs 2>/dev/null || true
+fi
+# Catena home (solo se DEST sotto /home/)
+_AINABOX_REAL=$(readlink -f "$AIBOX" 2>/dev/null)
+if [[ "$_AINABOX_REAL" == /home/* ]]; then
+    _homedir=$(dirname "$_AINABOX_REAL")
+    sudo chmod o+x "$_homedir" 2>/dev/null
+fi
+echo "── FASE 2.2: Guard ACL hermes_zone ──"
+if [ -d "$AIBOX/hermes_zone" ]; then
+    cur_mask=$(getfacl -p "$AIBOX/hermes_zone" 2>/dev/null | grep "^mask::" | awk -F: '{print $3}')
+    if [ "$cur_mask" != "rwx" ]; then
+        setfacl -m m::rwx,u:$CURRENT_USER:rwx "$AIBOX/hermes_zone" 2>/dev/null
+        echo "  [ok] ACL hermes_zone mask ripristinata (era: ${cur_mask:-assente})."
+        echo "[$(date +%H:%M:%S)] [Guard] ACL hermes_zone mask ripristinata (era: ${cur_mask:-assente})" >> "$AIBOX/vetrina_zone/ainabox.log"
+    else
+        echo "  [ok] ACL hermes_zone intatta."
+    fi
+    # ── Default ACL (ereditarietà file) ──
+    setfacl -d -m u:$CURRENT_USER:rwX,m::rwx,g::--- "$AIBOX/hermes_zone/" 2>/dev/null
+    echo "  [ok] ACL hermes_zone default impostata."
+fi
+
+# ═══════════════════════════════════════════════════════
+#  § ACL TRAVERSATA — raggruppate per corriere
+#  Ogni riga: [UTENTE] → [RISORSA] → [BIT]
+#  setfacl -m è idempotente: sovrascrive, non somma.
+# ═══════════════════════════════════════════════════════
+
+# ── VETRINA → token (D-4-18) ──
+if [ -d "$AIBOX/updater_zone/.secrets" ]; then
+    setfacl -m u:svc_vetrina:x "$AIBOX/updater_zone/.secrets/" 2>/dev/null
+    [ -f "$AIBOX/updater_zone/.secrets/VETRINA_TOKEN" ] && \
+        setfacl -m u:svc_vetrina:r "$AIBOX/updater_zone/.secrets/VETRINA_TOKEN" 2>/dev/null
+    echo "  [ok] ACL .secrets/ per svc_vetrina."
+fi
+
+# ── MANIFESTI (vetrina write + updater read/write) ──
+if [ -d "$AIBOX/updater_zone/manifesti" ]; then
+    setfacl -m u:svc_vetrina:rwx,u:svc_updater:rwx "$AIBOX/updater_zone/manifesti/" 2>/dev/null
+    echo "  [ok] ACL manifesti/ per svc_vetrina + svc_updater."
+fi
+
+# ── UPDATER (traversata + inbox) ──
+if [ -d "$AIBOX/updater_zone" ]; then
+    mkdir -p "$AIBOX/updater_zone/inbox/"
+    chown svc_updater:ai_services "$AIBOX/updater_zone/inbox/"
+    chmod 770 "$AIBOX/updater_zone/inbox/"
+    setfacl -m u:svc_updater:rwx "$AIBOX/updater_zone/" 2>/dev/null
+    echo "  [ok] ACL updater_zone/ + inbox/ per svc_updater."
+fi
+
+# ── MANUTENTORE (inbox → pianerottolo → ComfyUI) ──
+if [ -d "$AIBOX/updater_zone" ]; then
+    setfacl -m u:svc_manutentore:r-x "$AIBOX/updater_zone/" 2>/dev/null
+    setfacl -m u:svc_manutentore:rwx "$AIBOX/updater_zone/inbox/" 2>/dev/null
+fi
+if [ -d "$AIBOX/modelli/ollama_modelli" ]; then
+    setfacl -m u:svc_manutentore:rwx "$AIBOX/modelli/ollama_modelli/" 2>/dev/null
+fi
+setfacl -m u:svc_manutentore:rwx "$AIBOX/comfy_zone/" 2>/dev/null
+setfacl -d -m u:svc_manutentore:rwx "$AIBOX/comfy_zone/" 2>/dev/null
+echo "  [ok] ACL comfy_zone/ per svc_manutentore (base + default)."
+mkdir -p "$AIBOX/comfy_zone/ComfyUI/models"
+chown svc_manutentore:ai_services "$AIBOX/comfy_zone/ComfyUI/models"
+setfacl -m u:svc_manutentore:rwx "$AIBOX/comfy_zone/ComfyUI/models/"
+setfacl -d -m u:svc_manutentore:rwx "$AIBOX/comfy_zone/ComfyUI/models/"
+echo "  [ok] ACL manutentore: models/ (mkdir + chown + ACL + default)"
+
+# ── LOG (3 corrieri → ainabox.log) — guard su vetrina_zone ──
+if [ -d "$AIBOX/vetrina_zone" ]; then
+    setfacl -m u:svc_updater:x     "$AIBOX/vetrina_zone/" 2>/dev/null
+    setfacl -m u:svc_updater:rw    "$AIBOX/vetrina_zone/ainabox.log" 2>/dev/null
+    setfacl -m u:svc_manutentore:x "$AIBOX/vetrina_zone/" 2>/dev/null
+    setfacl -m u:svc_manutentore:rw "$AIBOX/vetrina_zone/ainabox.log" 2>/dev/null
+    setfacl -m u:svc_ollama:rw     "$AIBOX/vetrina_zone/ainabox.log" 2>/dev/null
+    echo "  [ok] ACL ainabox.log per updater + manutentore + ollama."
+fi
+
+echo "── FASE 2.3: Obsidian (desktop entry + vault) ──"
+DESK_HOME="/home/$CURRENT_USER"
+OBSIDIAN_APP="$AIBOX/Obsidian/Obsidian.AppImage"
+OBSIDIAN_VAULT_ID="1ee5c403df8d6b78"
+OBSIDIAN_VAULT_PATH="$AIBOX/hermes_zone/wiki"
+if [ -d "$DESK_HOME" ] && [ -f "$OBSIDIAN_APP" ]; then
+    DESKTOP_DIR="$DESK_HOME/.local/share/applications"
+    mkdir -p "$DESKTOP_DIR"
+    cat > "$DESKTOP_DIR/obsidian.desktop" << OBSDESK
+[Desktop Entry]
+Type=Application
+Name=Obsidian
+Icon=obsidian
+Exec="$AIBOX/Obsidian/Obsidian.AppImage" %u
+Terminal=false
+MimeType=x-scheme-handler/obsidian;
+OBSDESK
+    update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    mkdir -p "$DESK_HOME/.local/share/icons/hicolor/256x256/apps/"
+    cp "$AIBOX/Obsidian/obsidian-icon.png" "$DESK_HOME/.local/share/icons/hicolor/256x256/apps/obsidian.png" 2>/dev/null || true
+    gtk-update-icon-cache "$DESK_HOME/.local/share/icons/hicolor/" 2>/dev/null || true
+    cp "$DESKTOP_DIR/obsidian.desktop" "$(xdg-user-dir DESKTOP 2>/dev/null || echo "$DESK_HOME/Desktop")/" 2>/dev/null || true
+    chown $CURRENT_USER:$CURRENT_USER "$DESKTOP_DIR/obsidian.desktop"
+    OBSIDIAN_CFG="$DESK_HOME/.config/obsidian/obsidian.json"
+    mkdir -p "$DESK_HOME/.config/obsidian"
+    if [ ! -f "$OBSIDIAN_CFG" ] || ! grep -q "$OBSIDIAN_VAULT_ID" "$OBSIDIAN_CFG" 2>/dev/null; then
+        echo '{"vaults":{"'$OBSIDIAN_VAULT_ID'":{"path":"'$OBSIDIAN_VAULT_PATH'","ts":'$(date +%s)'000,"open":true}}}' > "$OBSIDIAN_CFG"
+        chown $CURRENT_USER:$CURRENT_USER "$OBSIDIAN_CFG"
+        echo "  [ok] Vault ID Obsidian creato."
+    else
+        echo "  [ok] Vault ID Obsidian intatto."
+    fi
+    echo "  [ok] Desktop entry Obsidian installato."
+else
+    echo "  [skip] Obsidian — AppImage o home non presenti."
+fi
+echo ""
+sleep 1
+
+echo ""
+echo "── FASE 2.5: Linger (enable) ──"
+for entry in "${USERS[@]}"; do
+    uname="${entry%%:*}"
+    [[ "$uname" == "svc_vetrina" || "$uname" == "svc_manutentore" ]]&& { echo "  [skip] $uname — linger non gli serve"; continue; }
+    loginctl enable-linger "$uname" 2>/dev/null && echo "  [ok] linger $uname acceso." || true
+done
+echo "── FASE 3: Script + Sudoers ──"
+SCRIPTS=("chiudi_tutto" "avvia_servizio.sh" "stato_silo.sh" )
+for s in "${SCRIPTS[@]}"; do
+    if [ -f "$T7_BIN/$s" ]; then
+        ln -sf "$T7_BIN/$s" "/usr/local/bin/$s"
+        echo "  [ok] $s"
+    else
+        echo "  [!] $s NON in $T7_BIN/"
+    fi
+done
+# svc_manutentore → /usr/local/sbin (symlink, path diverso da /usr/local/bin)
+if [ -f "$AIBOX/updater_zone/svc_manutentore.sh" ]; then
+    ln -sf "$AIBOX/updater_zone/svc_manutentore.sh" "/usr/local/sbin/svc_manutentore.sh"
+    echo "  [ok] svc_manutentore.sh → /usr/local/sbin/"
+fi
+SUDOERS_FILES=("servizi" "stato_silo" "apri_ainabox" "disconnetti_ainabox" "vetrina")
+for sf in "${SUDOERS_FILES[@]}"; do
+    if [ -f "$T7_SUDOERS/$sf" ]; then
+        sed "s/CUR_USER/$CURRENT_USER/g" "$T7_SUDOERS/$sf" | sed "s|\$AIBOX|$AIBOX|g" > /tmp/ainabox_sud_tmp && install -m 440 /tmp/ainabox_sud_tmp "/etc/sudoers.d/$sf" && rm -f /tmp/ainabox_sud_tmp
+        echo "  [ok] sudoers/$sf"
+    else
+        echo "  [!] sudoers/$sf NON in $T7_SUDOERS/"
+    fi
+done
+
+# mano di restituzione — installa la copia host
+# icone host — sopravvive a disconnetti (chiave visuale)
+APPDIR="/home/$CURRENT_USER/.local/share/applications"
+mkdir -p "$APPDIR"
+install -m 644 "$AIBOX/engine_zone/desktop/ainabox-apri.desktop" "$APPDIR/ainabox-apri.desktop"
+install -m 644 "$AIBOX/engine_zone/desktop/ainabox-disconnetti.desktop" "$APPDIR/ainabox-disconnetti.desktop"
+echo "  [ok] icone host installate"
+if [ -f "$AIBOX/engine_zone/disconnetti_ainabox" ]; then
+    install -m 755 "$AIBOX/engine_zone/disconnetti_ainabox" /usr/local/bin/disconnetti_ainabox
+    echo "  [ok] disconnetti_ainabox installato su host"
+    install -m 755 "$AIBOX/engine_zone/bin/apri_ainabox_icon" /usr/local/bin/apri_ainabox_icon
+    echo "  [ok] apri_ainabox_icon installato su host"
+fi
+if [ -f "$AIBOX/engine_zone/apri_ainabox" ]; then
+    install -m 755 "$AIBOX/engine_zone/apri_ainabox" /usr/local/bin/apri_ainabox
+    echo "  [ok] apri_ainabox installato su host (file reale)"
+fi
+# PONTE rimosso: FASE 6 apre il browser. Il symlink dell'installer è sufficiente.
+# Vetrina service
+T7_SVC="$AIBOX/engine_zone/vetrina.service"
+if [ -f "$T7_SVC" ]; then
+    sed "s|\$AIBOX|$AIBOX|g" "$T7_SVC" > /tmp/ainabox_svc_tmp && install -m 644 /tmp/ainabox_svc_tmp /etc/systemd/system/vetrina.service && rm -f /tmp/ainabox_svc_tmp
+    systemctl daemon-reload
+    echo "  [ok] vetrina.service installato"
+else
+    echo "  [!] vetrina.service NON su SSD"
+fi
+
+echo ""
+# === FASE 3b: Install service user containerd-rootless ===
+echo "── FASE 3b: Service user daemon rootless ──"
+SVC_TEMPLATE="$AIBOX/engine_zone/bin/containerd-rootless.service"
+if [ -f "$SVC_TEMPLATE" ]; then
+    for entry in "${USERS[@]}"; do
+        IFS=':' read -r uname uid gid home shell <<< "$entry"
+        [[ "$uname" == "svc_vetrina" || "$uname" == "svc_manutentore" || "$uname" == "svc_hermes" ]] && continue
+        udir="/home/$uname/.config/systemd/user"
+        mkdir -p "$udir"
+        sed "s/SVC_NAME/$uname/g" "$SVC_TEMPLATE" | sed "s|\$AIBOX|$AIBOX|g" > "$udir/containerd-rootless.service"
+        chown -R "$uname:$gid" "/home/$uname/.config"
+        sudo -u "$uname" env XDG_RUNTIME_DIR="/run/user/$(id -u "$uname" 2>/dev/null)" systemctl --user daemon-reload
+    done
+    echo "  [ok] service user ×5 installati"
+else
+    echo "  [!] TEMPLATE NON TROVATO: $SVC_TEMPLATE"
+fi
+echo ""
+# Creazione nerdctl_root/svc_* (idempotente, T7 no-op)
+sudo mkdir -p "$AIBOX/nerdctl_root" 2>/dev/null
+for entry in "${USERS[@]}"; do
+    IFS=':' read -r uname uid gid home shell <<< "$entry"
+    [[ "$uname" == "svc_vetrina" ]] && continue
+    _nrc="$AIBOX/nerdctl_root/$uname"
+    [ -d "$_nrc" ] || { sudo mkdir -p "$_nrc" 2>/dev/null; sudo chown "$uname:$gid" "$_nrc" 2>/dev/null; }
+done
+echo "  [ok] nerdctl_root verificata"
+# ── GUARD A: chown -R nerdctl_root + restart daemon se "not implemented" ──
+for _svc in svc_ollama svc_owu svc_comfy svc_speaches svc_updater; do
+    _svchome="$AIBOX/nerdctl_root/$_svc"
+    [ -d "$_svchome" ] && sudo chown -R "$_svc:ai_services" "$_svchome" 2>/dev/null
+    _gid=$(id -g "$_svc" 2>/dev/null) || continue
+    if sudo -n -u "$_svc" XDG_RUNTIME_DIR="/run/user/$_gid" "$AIBOX/engine_zone/runtime/bin/nerdctl" ps 2>&1 | grep -q "not implemented"; then
+        echo "  [fix] $_svc: nerdctl not implemented → restart containerd"
+        sudo -u "$_svc" XDG_RUNTIME_DIR="/run/user/$_gid" systemctl --user restart containerd-rootless 2>/dev/null || true
+        sleep 3
+    fi
+done
+# slirp4netns: verifica compatibilità glibc (idempotente, T7 no-op)
+_SLIRP_BIN="$AIBOX/engine_zone/runtime/bin/slirp4netns"
+if [ -f "$_SLIRP_BIN" ] && ldd "$_SLIRP_BIN" 2>&1 | grep -qi "not found"; then
+    if [ -x /usr/bin/slirp4netns ]; then
+        sudo cp /usr/bin/slirp4netns "$_SLIRP_BIN" 2>/dev/null
+        sudo chmod 755 "$_SLIRP_BIN" 2>/dev/null
+        echo "  [ok] slirp4netns sostituito (glibc compatibile)"
+    elif command -v apt >/dev/null 2>&1; then
+pkg_install "slirp4netns" || true
+        sudo cp /usr/bin/slirp4netns "$_SLIRP_BIN" 2>/dev/null
+        sudo chmod 755 "$_SLIRP_BIN" 2>/dev/null
+        echo "  [ok] slirp4netns installato + sostituito"
+    else
+        echo "  [!] slirp4netns: glibc incompatibile, apt non disponibile"
+    fi
+fi
+echo "── FASE 4: Daemon rootless (systemd user) ──"
+for entry in "${USERS[@]}"; do
+    IFS=':' read -r uname uid gid home shell <<< "$entry"
+    [[ "$uname" == "svc_vetrina" || "$uname" == "svc_manutentore" || "$uname" == "svc_hermes" ]] && { echo "  [skip] $uname — non gli serve containerd"; continue; }
+    rundir="/run/user/$(id -u "$uname" 2>/dev/null)"
+    sock="$rundir/containerd-rootless/api.sock"
+    _store="$home/.local/share/nerdctl"
+    _src="$AIBOX/nerdctl_root/$uname"
+    if [ -d "$_src" ]; then
+        _size=$(du -sm "$_store" 2>/dev/null | cut -f1)
+        if [ "${_size:-0}" -lt 100 ]; then
+            mkdir -p "$home/.local/share"
+            cp -a "$_src/." "$_store/" 2>/dev/null
+            chown -R "$uname:ai_services" "$_store" 2>/dev/null
+            echo "  [ok] $uname: content store popolato da nerdctl_root."
+        fi
+    fi
+    sudo -u "$uname" env XDG_RUNTIME_DIR="$rundir" \
+        systemctl --user restart containerd-rootless
+    for i in $(seq 1 10); do
+        [ -S "$sock" ] && break
+        sleep 1
+    done
+    if [ -S "$sock" ]; then
+        echo "  [ok] $uname daemon avviato"
+    else
+        echo "  [!] $uname daemon NON avviato"
+        echo "      debug: sudo -u $uname env XDG_RUNTIME_DIR=$rundir systemctl --user status containerd-rootless"
+    fi
+done
+echo ""
+# FASE 4.2: Carica immagine sandbox (Hermes) — SLIM: pull + fallback .tar
+echo "── FASE 4.2: Carica immagine sandbox ──"
+    chown -R svc_hermes:ai_services "$AIBOX/hermes_zone/" 2>/dev/null || true
+_SB_IMG="docker.io/nousresearch/hermes-agent:stable-desktop"
+if (cd / && sudo -u svc_hermes HOME="$AIBOX/hermes_zone" /usr/bin/podman images 2>&1) | grep -q "hermes-agent"; then
+    echo "  [ok] Immagine sandbox già presente."
+else
+    _SB_OK=0
+    echo "  Scarico immagine sandbox (podman pull)…"
+    if (cd / && sudo -u svc_hermes HOME="$AIBOX/hermes_zone" /usr/bin/podman pull "$_SB_IMG" 2>&1); then
+        _SB_OK=1
+        echo "  [ok] Immagine sandbox scaricata."
+    elif [ -f "$AIBOX/hermes-sandbox-desktop.tar" ]; then
+        echo "  [!] podman pull fallito. Fallback: podman load dal .tar…"
+        if (cd / && sudo -u svc_hermes HOME="$AIBOX/hermes_zone" /usr/bin/podman load -i "$AIBOX/hermes-sandbox-desktop.tar" 2>&1); then
+            _SB_OK=1
+            echo "  [ok] Immagine sandbox caricata (fallback .tar)."
+        fi
+    fi
+    if [ "$_SB_OK" -eq 1 ]; then
+        touch "$AIBOX/.sandbox_loaded" 2>/dev/null || true
+    else
+        echo "  [!] Immagine sandbox NON disponibile. Hermes tool-calling non funzionerà."
+    fi
+fi
+echo ""
+echo "── FASE 4.5: Cintura di rete di sicurezza ──"
+CINTURA_DIR="$AIBOX/network_zone"
+MODE_NET=$(cat "$CINTURA_DIR/MODE_NET" 2>/dev/null || echo "offline")
+nft delete table inet cintura 2>/dev/null
+
+case "$MODE_NET" in
+  offline)
+    nft -f "$CINTURA_DIR/cintura.aperta.conf" 2>/dev/null \
+      && echo "  [ok] cintura attiva (profilo offline, perimetro)" \
+      || echo "  [!] cintura offline: fallimento."
+    nft -f "$CINTURA_DIR/cintura.peers.conf" 2>/dev/null
+    ;;
+  casa)
+    nft -f "$CINTURA_DIR/cintura.aperta.conf" 2>/dev/null \
+      && echo "  [ok] cintura attiva (profilo casa, internet)" \
+      || echo "  [!] cintura casa: fallimento."
+    nft -f "$CINTURA_DIR/cintura.peers.conf" 2>/dev/null
+    ;;
+  lan)
+    if [ -f "$CINTURA_DIR/reti.sh" ]; then
+      bash "$CINTURA_DIR/reti.sh" lan 2>/dev/null \
+        && echo "  [ok] cintura attiva (profilo lan, modulo RETI)" \
+        || echo "  [!] modulo RETI: fallimento."
+    else
+      echo "  [!] Modulo RETI non installato. Resto in casa."
+      nft -f "$CINTURA_DIR/cintura.aperta.conf" 2>/dev/null
+      nft -f "$CINTURA_DIR/cintura.peers.conf" 2>/dev/null
+    fi
+    ;;
+  *)
+    nft -f "$CINTURA_DIR/cintura.aperta.conf" 2>/dev/null \
+      && echo "  [ok] cintura attiva (default: perimetro)" \
+      || echo "  [!] cintura default: fallimento."
+    nft -f "$CINTURA_DIR/cintura.peers.conf" 2>/dev/null
+    ;;
+esac
+
+echo ""
+echo "── FASE 5: PANNELLO AINABOX ──"
+echo "$CURRENT_USER" > "$AIBOX/vetrina_zone/.current_user" 2>/dev/null || true
+if curl -s -k -o /dev/null --max-time 2 http://127.0.0.1:8765/ 2>/dev/null; then
+    echo "  [ok] PANNELLO AINABOX già in ascolto."
+else
+    systemctl start vetrina
+    sleep 5
+    if ss -ltnp 2>/dev/null | awk '$4 ~ /:8765$/'; then
+        echo "  [ok] PANNELLO AINABOX avviato."
+    else
+        echo "  [!] PANNELLO AINABOX non ha risposto."
+    fi
+fi
+
+echo ""
+echo "── FASE 6: Browser ──"
+_URL="http://127.0.0.1:8765"
+_UHOME="/home/${CURRENT_USER:-$(whoami)}"
+_UAUTH="${_UHOME}/.Xauthority"
+[ -f "$_UAUTH" ] && export XAUTHORITY="$_UAUTH"
+[ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ] && export DISPLAY=":0"
+BROWSER_DESK=$(awk -F= '/x-scheme-handler\/https/{print $2}' "${_UHOME}/.config/mimeapps.list" 2>/dev/null)
+[ -z "$BROWSER_DESK" ] && BROWSER_DESK="firefox.desktop"
+APP_ID="${BROWSER_DESK%.desktop}"
+
+IS_FLATPAK=0
+if command -v flatpak &>/dev/null && flatpak list --app 2>/dev/null | grep -qi "$APP_ID"; then IS_FLATPAK=1; fi
+if [ "$IS_FLATPAK" -eq 1 ]; then
+    setsid flatpak run "$APP_ID" "$_URL" > /dev/null 2>&1 &
+    sleep 8
+    pgrep -f "$APP_ID" >/dev/null 2>&1 && echo "  [ok] Browser ($APP_ID, Flatpak)" || echo "  [!] Digita: $_URL"
+else
+    PROFILE="/tmp/ainabox-profile"
+    if echo "$APP_ID" | grep -qiE "chromium|chrome|brave|edge|vivaldi|opera"; then PROFILE_FLAG="--user-data-dir"; else PROFILE_FLAG="--profile"; fi
+    DESK_FILE=$(find /usr/share/applications "${_UHOME}/.local/share/applications" -name "$BROWSER_DESK" 2>/dev/null | head -1)
+    if [ -n "$DESK_FILE" ]; then
+        BROWSER_BIN=$(grep "^Exec=" "$DESK_FILE" | head -1 | sed 's/^Exec=//' | awk '{print $1}')
+        mkdir -p "$PROFILE" 2>/dev/null
+        setsid "$BROWSER_BIN" "$PROFILE_FLAG" "$PROFILE" "$_URL" > /dev/null 2>&1 &
+        sleep 8
+        pgrep -f "ainabox-profile" >/dev/null 2>&1 && echo "  [ok] Browser ($APP_ID)" || echo "  [!] Digita: $_URL"
+    else
+        if command -v xdg-open &>/dev/null; then
+            setsid xdg-open "$_URL" > /dev/null 2>&1 &
+            sleep 3
+            echo "  [ok] Browser (xdg-open)"
+        else
+            echo "  [!] Browser non trovato. Digita: $_URL"
+        fi
+    fi
+fi
+echo ""
+echo "── FASE 7a: Certificato TLS (ComfyUI) ──"
+_CN="localhost"
+_CRT_C="$AIBOX/comfy_zone/certs/comfy.crt"
+_KEY_C="$AIBOX/comfy_zone/certs/comfy.key"
+
+if [ ! -f "$_CRT_C" ] || ! openssl x509 -in "$_CRT_C" -noout -subject 2>/dev/null | grep -q "CN=$_CN"; then
+    sudo mkdir -p "$(dirname "$_CRT_C")" 2>/dev/null
+    sudo openssl req -x509 -nodes -days 3650 \
+      -newkey rsa:2048 \
+      -keyout "$_KEY_C" \
+      -out "$_CRT_C" \
+      -subj "/CN=${_CN}" \
+      -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null \
+      && { sudo chown svc_comfy:ai_services "$_KEY_C" 2>/dev/null; \
+           sudo chmod 600 "$_KEY_C" 2>/dev/null; \
+           sudo chown svc_comfy:ai_services "$_CRT_C" 2>/dev/null; \
+           echo "  [ok] cert comfy (CN=localhost, SAN=127.0.0.1)"; } \
+      || echo "  [!] cert comfy: fallimento (uso esistente)"
+else
+    echo "  [ok] cert comfy esistente (CN=localhost)"
+fi
+
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  AINABOX è PRONTA"
+echo "═══════════════════════════════════════════"

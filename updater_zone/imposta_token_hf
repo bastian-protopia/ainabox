@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# imposta_token_hf — scrive .secrets/HF_TOKEN da stdin. Silenzio totale.
+# Uso: echo "hf_xxx..." | $AIBOX/updater_zone/imposta_token_hf
+#   oppure: cat | imposta_token_hf
+AIBOX=$(cat /etc/ainabox/dest 2>/dev/null) || { echo "ERRORE: /etc/ainabox/dest assente" >&2; exit 1; }
+set -euo pipefail
+SECRETS_DIR="$AIBOX/updater_zone/.secrets"
+AIBOX=$(cat /etc/ainabox/dest 2>/dev/null) || { echo 'ERRORE: /etc/ainabox/dest assente' >&2; exit 1; }
+TARGET="$SECRETS_DIR/HF_TOKEN"
+
+# Legge da stdin (non da argomenti, non da variabile d'ambiente)
+TOKEN="$(cat)"
+
+# Validazione minima: non vuoto, formato hf_
+if [[ -z "$TOKEN" ]]; then
+  echo "❌ Token vuoto. Riprova." >&2
+  exit 1
+fi
+if [[ ! "$TOKEN" =~ ^hf_ ]]; then
+  echo "❌ Il token deve iniziare con hf_. Riprova." >&2
+  exit 1
+fi
+
+# Scrive
+mkdir -p "$SECRETS_DIR"
+chmod 700 "$SECRETS_DIR"
+printf '%s' "$TOKEN" > "$TARGET"
+chmod 600 "$TARGET"
+
+# Owner: svc_updater se esiste (T7 ad regime). Su lab: già owner di chi scrive.
+if id svc_updater &>/dev/null; then
+  chown svc_updater:root "$SECRETS_DIR" "$TARGET"
+fi
+
+# Pulizia variabile
+unset TOKEN
+
+echo "✅ Token HF salvato."

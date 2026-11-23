@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AINABOX
+Name[en]=AINABOX
+Comment=Accende AINABOX
+Exec=/usr/local/bin/apri_ainabox_icon
+Icon=ainabox
+Terminal=false
+Categories=Office;Utility;

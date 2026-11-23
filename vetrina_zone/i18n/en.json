@@ -1,0 +1,222 @@
+{
+  "menu": {
+    "chat": "Chat",
+    "grafica": "Art",
+    "assistente": "Assistant",
+    "spegni": " SHUT DOWN AINABOX",
+    "hardware": "Hardware & Space",
+    "stato_catena": "Chain Status",
+    "connessioni": "Connections",
+    "mappa": "Knowledge Map",
+    "aggiornamenti": "Updates",
+    "lingua": "Language",
+    "backup": "Backup",
+    "backup_esterno": "External Backup",
+    "azioni": "Actions"
+  },
+  "log": {
+    "copia": "Copy",
+    "chiudi": "Close"
+  },
+  "pann": {
+    "servizi_attivi": "Active services:",
+    "nome": "NAME",
+    "dove": "LOCATION",
+    "simula": "SIMULATE",
+    "avvia_backup": "START BACKUP",
+    "backup_esistenti": "Existing backups",
+    "aggiorna": "Refresh"
+  },
+  "ph": {
+    "percorso": "/path/on/disk"
+  },
+  "backup": {
+    "simulazione_ok": "SIMULATION OK → {artifact}",
+    "completo": "BACKUP COMPLETE → {gb} GB",
+    "connessione_persa": "⚠️ connection lost",
+    "nessuno": "No backups",
+    "delete_btn": "Delete 🗑️",
+    "del_prefix": "Permanently delete",
+    "del_suffix": "This action cannot be undone."
+  },
+  "dlg": {
+    "token": "AINABOX Token:",
+    "ingest": "Ingest {file} -> \"{nome}\"?",
+    "rimuovi_file": "Remove {file}?",
+    "backup_path": "Enter a backup path",
+    "elimina": "Permanently delete {name}?\nThis action cannot be undone.",
+    "rimuovi_ollama": "Remove \"{nome}\" from Ollama?",
+    "err_non_rimosso": "Error: {det} not removed.",
+    "err_conn": "Connection error."
+  },
+  "sp": {
+    "corso": "Shutting down…",
+    "spegnendo": "⏳ Stopping services…",
+    "fallito": "❌ Shutdown failed. {errore}",
+    "torna_menu": "To use a tool, pick one from the main menu",
+    "benvenuto": "To use a tool, pick one from the main menu",
+    "errore": "rsync error",
+    "errore_gen": "Error"
+  },
+  "avvio": {
+    "chat_prep": "Chat preparing, hold on…",
+    "grafica_prep": "Art preparing, hold on…",
+    "assistente_prep": "Assistant preparing, hold on…",
+    "generale": "⏳ Starting…"
+  },
+  "servizi": {
+    "chat_gia": "Chat already active.",
+    "chat_attiva": "Text chat is active.",
+    "apri": "OPEN",
+    "grafica_gia": "Art already active.",
+    "grafica_attiva": "Art active.",
+    "assist_gia": "Assistant already active.",
+    "assist_attivo": "Assistant active.",
+    "gen_attivo": "{nome} active.",
+    "vocale_attiva": "Voice chat is active.",
+    "apri_tab": "Click to open in a new tab"
+  },
+  "avvertenze": {
+    "titolo": "⚠️ Warnings",
+    "hdr": "Warnings:",
+    "ok": "Compatible with this hardware",
+    "warn": "Slow and crash risk on this hardware",
+    "no": "not manageable on this hardware",
+    "inline": "⚠️ Warnings"
+  },
+  "errore": {
+    "nessun_modello": "No models installed",
+    "vai_agg": "⚠️ Go to Update Models",
+    "non_partita_chat": "Chat did not start",
+    "non_partita_grafica": "Art did not start",
+    "non_partita_gen": "{nome} did not start",
+    "spegni_riprova": "Shut down AINABOX and retry.",
+    "controlla_log": "Check the LOG",
+    "gpu_insufficiente": "Insufficient GPU for CHAT. Min 6 GB free required.",
+    "nessun_modello_ollama": "No Ollama model installed. Go to Update Models to download one.",
+    "avvio_generico": "Startup failed. Check logs.",
+    "avvio_tts": "TTS startup failed.",
+    "avvio_stt": "STT startup failed."
+  },
+  "agg": {
+    "titolo_chat": "Update Chat Models",
+    "sotto_chat": "(LLM models)",
+    "titolo_grafica": "Update Art Models",
+    "sotto_grafica": "(diffusion models)",
+    "titolo_servizi": "Update Services",
+    "sotto_servizi": "(Ollama, Open WebUI, ComfyUI, Speaches, Hermes)",
+    "titolo_ainabox": "Update AINABOX",
+    "caricando": "Loading models…",
+    "nessun_installato": "No models installed.",
+    "motore_non_attivo": "Chat engine not active.",
+    "motore_non_avviato": "⚠️ Engine not started.",
+    "cerca": "⏳ Searching…",
+    "trovati": "{count} models found",
+    "nessun_trovato": "No models found.",
+    "gia_installato": "Already installed",
+    "selezionato": "Selected",
+    "scaricando": "⏳ Downloading {nome}…",
+    "nessun_gguf": "❌ No .gguf file in repo",
+    "scaricando_file": "⏳ Downloading {file} ({gb} GB)…",
+    "installato": "✅ Model installed.",
+    "fonte_non_supp": "❌ Unsupported source",
+    "in_corso": "⏳ Update in progress…",
+    "fatto": "✅ {nome} updated.",
+    "fallito": "⚠️ Update failed.",
+    "err_rete": "⚠️ Network error.",
+    "ainabox_corso": "⏳ AINABOX update in progress…",
+    "ainabox_ok": "✅ AINABOX updated to {versione}.",
+    "rollback_corso": "⏳ Rolling back…",
+    "rollback_ok": "✅ {nome}: rollback complete.",
+    "rollback_fallito": "⚠️ Rollback failed.",
+    "avvisa_spegni": "⚠️ An update requires shutting down active services.",
+    "procedi": "PROCEED",
+    "rimuovi": "Remove",
+    "aggiorna": "UPDATE",
+    "installati": "Installed",
+    "salva": "SAVE",
+    "hermes_nota": "Update availability detection for Hermes is disabled for security reasons. However, updating is still possible if available. Click Update to proceed."
+  },
+  "agg_btn": {
+    "aggiorna": "UPDATE",
+    "rollback": "ROLLBACK",
+    "in_corso": "⏳ IN PROGRESS…",
+    "cerca": "SEARCH",
+    "scarica": "DOWNLOAD",
+    "rimuovi": "Remove"
+  },
+  "agg_msg": {
+    "installati": "Installed",
+    "rimosso": "{nome} removed.",
+    "non_ragg": "Unreachable.",
+    "rollback_a": "✅ {motore}: rolled back to {versione}.",
+    "tornato_a": "✅ Reverted to {versione}.",
+    "avvisa_spegni": "Updates will temporarily stop all services:",
+    "procedi": "PROCEED"
+  },
+  "hf": {
+    "titolo": "HF Token",
+    "token_vuoto": "❌ Empty token",
+    "salvataggio": "⏳ Saving…",
+    "salva": "SAVE"
+  },
+  "stato": {
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "srv": {
+    "whisper_attivo": "Whisper active. CHAT intact.",
+    "nessun_llm": "No LLM active. Whisper ok.",
+    "voce_spenta": "Voice off.",
+    "modello_ripristinato": "Model restored ({from}).",
+    "hf_salvato": "HF Token saved ✅",
+    "nessun_alternativo": "No alternative model available. Download a smaller LLM (e.g. 7B) to use voice.",
+    "modello_riotto": "Model reduced ({big} → {small}). CHAT always active.",
+    "voce_spenta_ripristinato": "Voice off. Model restored ({from})."
+  },
+  "vocale": {
+    "modalita": "Voice mode",
+    "desc": "Speak and listen beyond reading and writing."
+  },
+  "ps": {
+    "nessun_modello": "No model in use",
+    "oom": "❌ Chat not responding. Insufficient memory: model was unloaded.",
+    "vocale_fix": "⚠️ Turn off voice mode or use a smaller model.",
+    "down": "⚠️ Chat not responding",
+    "stat": "⚡ {name} · VRAM {vram} GB · Offload {ram} GB RAM",
+    "vocale_budget": "⚠️ Voice ON: −2.5 GB from budget"
+  },
+  "sse": {
+    "nessun_modello_ollama": "No Ollama model installed. Go to Updates to download one.",
+    "gpu_insuff": "Insufficient GPU for Chat. Needs min 6 GB free.",
+    "chat_avvio": "Chat starting…",
+    "chat_fail": "❌ Chat failed to start. Shut down AINABOX and retry. Check LOG.",
+    "hw_no_model": "⚠️ Warning: none of the installed models can run on this hardware",
+    "chat_ok": "✅ Chat is active.",
+    "nessun_modello_grafica": "No Art model installed. Go to Updates to download one.",
+    "grafica_avvio": "Art starting…",
+    "grafica_fail": "❌ Art failed to start. Shut down AINABOX and retry. Check LOG.",
+    "grafica_ok": "✅ Art active.",
+    "ascolto_avvio": "Listening mode starting…",
+    "ascolto_fail": "❌ Voice mode failed to start. Shut down AINABOX and retry. Check LOG.",
+    "ascolto_ok": "✅ Listening mode active. Aina can speak to you.",
+    "assistente_avvio": "Assistant starting…",
+    "assistente_fail": "❌ Assistant failed to start. Shut down AINABOX and retry. Check LOG.",
+    "assistente_ok": "✅ Assistant active. Dashboard: http://127.0.0.1:9119"
+  },
+  "palco": {
+    "assistente": "Assistant",
+    "grafica": "Art"
+  },
+  "toggle": {
+    "gia": "Already active.",
+    "attivo": "Active."
+  },
+  "pannelli": {
+    "servizi_label": "Active services:"
+  },
+  "hw": {
+    "cpu": "Processor",
+    "gpu": "Graphics card"
+  }
+}

@@ -1,0 +1,1 @@
+CUR_USER ALL=(root) NOPASSWD: /usr/bin/bash /usr/local/bin/apri_ainabox, /usr/bin/bash $AIBOX/engine_zone/apri_ainabox

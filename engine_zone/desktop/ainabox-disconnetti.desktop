@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AINABOX disconnetti
+Comment=Disconnette AINABOX
+Exec=sudo bash /usr/local/bin/disconnetti_ainabox
+Icon=ainabox
+Terminal=true
+Categories=System;

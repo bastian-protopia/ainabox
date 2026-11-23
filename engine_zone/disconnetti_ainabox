@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# AINABOX — Disconnessione (v0.1a)
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
+# Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
+echo "==========================================="
+echo "  AINABOX - DISCONNESSIONE"
+echo "==========================================="
+trap 'cupola_errata' ERR
+cupola_errata() {
+  local err
+  err=$(tail -5 /tmp/ainabox_err.log 2>/dev/null)
+  echo ""
+  echo "❌ AINABOX non ha terminato la chiusura."
+  echo ""
+  echo "Cosa è successo: ${err:-nessun dettaglio in log}"
+  echo "Cosa puoi fare: Ri-clicca DISCONNETTI. È sicuro."
+  echo "[$(date -u +%FT%TZ)] Cupola interrotta: ${err}" >> /tmp/ainabox_err.log
+  exit 1
+}
+
+USERS=(
+    "svc_ollama:"
+    "svc_owu:"
+    "svc_comfy:"
+    "svc_speaches:"
+    "svc_updater:"
+    "svc_manutentore:"
+    "svc_hermes:$(id -u svc_hermes 2>/dev/null || true)"
+    "svc_vetrina:"
+)
+GRP_DEF=("ai_services" "engine_mgr" "manutentore" "ainabox")
+SCRIPTS=("chiudi_tutto" "avvia_servizio.sh" "stato_silo.sh" )
+SUDOERS_FILES=("servizi" "stato_silo" "apri_ainabox" "disconnetti_ainabox" "vetrina")
+
+echo "── 1/12: Writer ──"
+if [ -f /usr/local/bin/chiudi_tutto ]; then
+    bash /usr/local/bin/chiudi_tutto 2>/dev/null
+    echo "  [ok] Writer fermato."
+else
+    echo "  [ok] chiudi_tutto non presente."
+fi
+
+echo "── 2/12: PANNELLO AINABOX ──"
+if systemctl is-active --quiet vetrina 2>/dev/null; then
+    systemctl stop vetrina
+    systemctl disable vetrina 2>/dev/null
+    sudo rm -f /etc/systemd/system/vetrina.service
+    systemctl daemon-reload
+    echo "  [ok] PANNELLO AINABOX fermato + service rimosso."
+else
+    pid=$(ss -ltnp 2>/dev/null | awk '$4 ~ /:8765$/' | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    if [ -n "$pid" ]; then
+        kill "$pid" 2>/dev/null; sleep 1
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+        echo "  [ok] PANNELLO AINABOX fermato (pid $pid, fallback)."
+    else
+        echo "  [ok] PANNELLO AINABOX non in ascolto."
+    fi
+fi
+echo "── 3/12: Browser ──"
+pkill -f "ainabox-profile|/app/brave" 2>/dev/null || true
+sleep 2
+pkill -9 -f "ainabox-profile|/app/brave" 2>/dev/null || true
+sleep 1
+echo "  [ok] Browser chiuso."
+echo "── 4/12: Daemon rootless ──"
+for entry in "${USERS[@]}"; do
+    uname="${entry%%:*}"
+    uid=$(id -u "$uname" 2>/dev/null) || true
+    # Graceful stop via systemd (funziona per i 5 con daemon, svc_vetrina no-op)
+    sudo -u "$uname" env XDG_RUNTIME_DIR="/run/user/$uid" \
+        systemctl --user stop containerd-rootless 2>/dev/null || true
+    sleep 1
+    # Fallback nucleare: processi residui
+    pids=$(ps -eo pid=,user= 2>/dev/null | awk -v u="$uname" '$2==u{print $1}')
+    if [ -n "$pids" ]; then
+        kill -9 $pids 2>/dev/null; sleep 1
+        echo "  [ok] $uname: Residui fermati."
+    else
+        echo "  [ok] $uname: Pulito."
+    fi
+    rm -f "/run/user/$uid/containerd.pid" 2>/dev/null
+done
+echo "── 4.5/12: Cintura di rete ──"
+if nft list tables 2>/dev/null | grep -q "inet cintura"; then
+    nft delete table inet cintura 2>/dev/null && echo "  [ok] Cintura di sicurezza ritirata."
+else
+    echo "  [ok] Cintura di sicurezza assente (niente da ritirare)."
+fi
+echo "── 5/12: Script ──"
+for s in "${SCRIPTS[@]}"; do
+    if [ -f "/usr/local/bin/$s" ]; then
+        rm -f "/usr/local/bin/$s"
+        echo "  [ok] $s rimosso."
+    fi
+done
+
+# auto-ritiro della copia host (sicuro: bash trattiene l'inode)
+# icone host: rimuove disconnetti (morte col binario), SALTA apri (chiave)
+APPDIR="/home/${SUDO_USER:-$(whoami)}/.local/share/applications"
+rm -f "$APPDIR/ainabox-disconnetti.desktop" 2>/dev/null && echo "  [ok] icona disconnetti rimossa"
+echo "  [skip] icona apri — chiave di riapertura, resta."
+rm -f /usr/local/bin/disconnetti_ainabox
+echo "  [ok] disconnetti_ainabox ritirato (auto)"
+echo "── 6/12: Sudoers ──"
+for sf in "${SUDOERS_FILES[@]}"; do
+    if [ "$sf" = "apri_ainabox" ]; then
+        echo "  [skip] sudoers/apri_ainabox — chiave di riapertura, resta."
+        continue
+    fi
+    if [ -f "/etc/sudoers.d/$sf" ]; then
+        rm -f "/etc/sudoers.d/$sf"
+        echo "  [ok] sudoers/$sf rimosso."
+    fi
+done
+
+# il proprietario esce dal gruppo ainabox prima delle groupdel
+gpasswd -d "${SUDO_USER:-$(whoami)}" ainabox 2>/dev/null || true
+echo "── 7/12: Subuid/Subgid ──"
+for entry in "${USERS[@]}"; do
+    uname="${entry%%:*}"
+    for f in /etc/subuid /etc/subgid; do
+        if grep -q "^${uname}:" "$f" 2>/dev/null; then
+            sed -i "/^${uname}:/d" "$f"
+            echo "  [ok] $uname rimosso da $(basename $f)."
+        fi
+    done
+done
+
+echo "── 8/12: Utenti ──"
+for entry in "${USERS[@]}"; do
+    uname="${entry%%:*}"
+    if id "$uname" &>/dev/null; then
+        loginctl terminate-user "$uname" 2>/dev/null || true
+        sleep 1
+        _uid=$(id -u "$uname" 2>/dev/null); [ -n "$_uid" ] && rm -rf "/run/user/$_uid" 2>/dev/null
+        userdel -r "$uname" 2>&1 || { echo "  [FAIL] $uname userdel fallito."; exit 1; }
+        rm -rf "/home/$uname" 2>/dev/null
+    else
+        echo "  [ok] $uname già assente."
+    fi
+done
+
+echo "── 9/12: Gruppi ──"
+for gname in "${GRP_DEF[@]}"; do
+    if getent group "$gname" &>/dev/null; then
+        groupdel "$gname" 2>/dev/null \
+            && echo "  [ok] $gname rimosso." \
+            || echo "  [!] $gname groupdel fallito."
+    else
+        echo "  [ok] $gname già assente."
+    fi
+done
+
+echo "── 10/12: /run/user ──"
+for entry in "${USERS[@]}"; do
+    uid="${entry##*:}"
+    [[ -z "$uid" ]] && continue
+    rundir="/run/user/$uid"
+    if [ -d "$rundir" ]; then
+        rm -rf "$rundir" 2>/dev/null || true
+        echo "  [ok] $rundir rimosso."
+    fi
+done
+
+echo "── 11/12: Umount ──"
+if mountpoint -q /mnt/ainabox 2>/dev/null; then
+    busy=$(fuser -vm /mnt/ainabox 2>/dev/null | tail -n +2 || true)
+    if [ -n "$busy" ]; then
+        echo "  [!] Processi in /mnt/ainabox:"
+        echo "$busy" | sed 's/^/     /'
+        fuser -km /mnt/ainabox 2>/dev/null || true
+        sleep 2
+    fi
+    if umount /mnt/ainabox 2>/dev/null; then
+        echo "  [ok] /mnt/ainabox smontato."
+    else
+        if [ -e /dev/mapper/ainabox ]; then
+            echo "  [X] Umount fallito + LUKS dietro. NON lazy."
+            exit 1
+        fi
+        echo "  [!] Umount pulito fallito, lazy (no LUKS)."
+        umount -l /mnt/ainabox 2>/dev/null
+        sleep 1
+        if mountpoint -q /mnt/ainabox 2>/dev/null; then
+            echo "  [X] ANCHE LAZY FALLITO. NON staccare."
+            exit 1
+        fi
+        echo "  [ok] /mnt/ainabox smontato (lazy)."
+    fi
+else
+    echo "  [ok] /mnt/ainabox non montato."
+fi
+
+echo "── 12/12: LUKS ──"
+if [ -e /dev/mapper/ainabox ]; then
+    echo 3 > /proc/sys/vm/drop_caches
+    for _i in 1 2 3; do
+        sync
+        sleep 3
+        if cryptsetup luksClose ainabox 2>&1; then
+            echo "  [ok] LUKS SSD chiuso (tentativo $_i)."
+            break
+        fi
+        echo "  [!] Tentativo $_i/3: device ancora busy."
+    done
+    if [ -e /dev/mapper/ainabox ]; then
+        echo "  [!] LUKS ancora aperto (riferimento kernel)."
+        echo "      Si chiuderà automaticamente allo spegnimento."
+        echo "      NON staccare il disco a caldo."
+    fi
+else
+    echo "  [ok] Mapper SSD non esiste."
+fi
+
+echo ""
+echo "══ GUARD FINALE ══"
+ERRORS=0
+[ -e /dev/mapper/ainabox ] && { echo "  [X] LUKS ANCORA APERTO"; ERRORS=1; }
+mountpoint -q /mnt/ainabox 2>/dev/null && { echo "  [X] /mnt/ainabox ANCORA MONTATO"; ERRORS=1; }
+for entry in "${USERS[@]}"; do
+    uname="${entry%%:*}"
+    id "$uname" &>/dev/null && { echo "  [X] $uname ANCORA PRESENTE"; ERRORS=1; }
+done
+for gname in "${GRP_DEF[@]}"; do
+    getent group "$gname" &>/dev/null && { echo "  [X] $gname ANCORA PRESENTE"; ERRORS=1; }
+done
+for s in "${SCRIPTS[@]}"; do
+    [ -f "/usr/local/bin/$s" ] && { echo "  [X] /usr/local/bin/$s ANCORA PRESENTE"; ERRORS=1; }
+done
+[ -f /etc/systemd/system/vetrina.service ] && { echo "  [X] AINABOX service ANCORA PRESENTE"; ERRORS=1; }
+[ -f /usr/local/bin/disconnetti_ainabox ] && { echo "  [X] disconnetti_ainabox ANCORA su host"; ERRORS=1; }
+AIBOX=$(cat /etc/ainabox/dest 2>/dev/null) || { echo "ERRORE: /etc/ainabox/dest non trovato" >&2; exit 1; }
+MODE=$(cat "$AIBOX/engine_zone/config/MODE" 2>/dev/null || echo "locale")
+
+if [ "$ERRORS" -eq 0 ]; then
+    if [ "$MODE" == "portabile" ]; then
+        echo "  [ok] Puoi spegnere il computer e poi staccare il cavo."
+    else
+        echo "  [ok] Disco resta montato. Riaccendi quando vuoi."
+    fi
+else
+    echo "  [X] RESIDUI TROVATI. NON staccare."
+    exit 1
+fi
+
+echo ""
+echo "==========================================="
+echo "  AINABOX DISCONNESSA TOTALMENTE."
+echo "==========================================="

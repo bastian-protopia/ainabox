@@ -1,0 +1,70 @@
+#!/bin/bash
+# AINABOX — Icona APRI (wrapper) v4
+# Copyright (C) 2026 Michele Canova bastian@ainabox.it
+# Licensed under GPL-3.0-or-later
+# Made by Bastian & Aina
+LOG="$HOME/.local/share/ainabox/apri_icon.log"
+mkdir -p "$(dirname "$LOG")"
+echo "[$(date +%H:%M:%S)] APRI icona: avvio" | tee -a "$LOG"
+echo "  DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY" | tee -a "$LOG"
+
+# Stato visivo a X (non bloccante, scompare alla fine)
+ZEN_PID=""
+if [ -n "$DISPLAY" ] && command -v zenity >/dev/null 2>&1; then
+    zenity --info --title="AINABOX" --text="Accendo AINABOX…" &
+    ZEN_PID=$!
+fi
+
+chiudi_stato() {
+    [ -n "$ZEN_PID" ] && kill "$ZEN_PID" 2>/dev/null
+}
+
+# Step 1: apri_ainabox (idempotente)
+echo "  [1/3] sudo bash /usr/local/bin/apri_ainabox..." | tee -a "$LOG"
+APRI_RC=0
+sudo bash /usr/local/bin/apri_ainabox >> "$LOG" 2>&1 || APRI_RC=$?
+[ "$APRI_RC" -eq 0 ] && echo "  [1/3] apri_ainabox: OK" | tee -a "$LOG" \
+  || echo "  [1/3] apri_ainabox: FALLITO (RC=$APRI_RC)" | tee -a "$LOG"
+
+# Step 2: attendo 8765 (max 60s)
+echo "  [2/3] Attendo porta 8765..." | tee -a "$LOG"
+UP=0
+for i in $(seq 1 30); do
+    if curl -s http://127.0.0.1:8765/ > /dev/null 2>&1; then
+        UP=1
+        break
+    fi
+    sleep 2
+done
+if [ "$UP" -eq 1 ]; then
+    echo "  [2/3] 8765: UP (iterazione $i)" | tee -a "$LOG"
+else
+    echo "  [2/3] 8765: DOWN dopo 60s" | tee -a "$LOG"
+    chiudi_stato
+    if [ -n "$DISPLAY" ] && command -v zenity >/dev/null 2>&1; then
+        zenity --error --title="AINABOX" \
+          --text="AINABOX non risponde.\n\nIl disco potrebbe non essere collegato\no i servizi non sono avviati.\n\nRiavvia il sistema e riprova." 2>/dev/null
+    fi
+    echo "[$(date +%H:%M:%S)] APRI icona: fine (ERRORE)" | tee -a "$LOG"
+    exit 1
+fi
+
+# Step 3: apro il browser (flatpak-first, nohup-detached)
+echo "  [3/3] Apro browser..." | tee -a "$LOG"
+URL="http://127.0.0.1:8765"
+BROWSER_DESK=$(xdg-mime query default x-scheme-handler/http 2>/dev/null)
+if [[ "$BROWSER_DESK" == *.*.*.desktop ]]; then
+    APP="${BROWSER_DESK%.desktop}"
+    echo "  [3/3] $APP (flatpak, nohup)" | tee -a "$LOG"
+    nohup flatpak run "$APP" "$URL" >/dev/null 2>&1 &
+    sleep 2
+    echo "  [3/3] Browser lanciato (PID $!)" | tee -a "$LOG"
+else
+    echo "  [3/3] xdg-open (nativo: ${BROWSER_DESK:-none}, nohup)" | tee -a "$LOG"
+    nohup xdg-open "$URL" >/dev/null 2>&1 &
+    sleep 2
+    echo "  [3/3] Browser lanciato (PID $!)" | tee -a "$LOG"
+fi
+
+chiudi_stato
+echo "[$(date +%H:%M:%S)] APRI icona: fine" | tee -a "$LOG"
